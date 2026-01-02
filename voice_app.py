@@ -3340,15 +3340,8 @@ class Handler(BaseHTTPRequestHandler):
             elif not VAPI_API_KEY:
                 self.send_json({"success": False, "error": "VAPI not configured. Add API keys in Settings."})
             else:
-                # Determine if inbound or outbound agent
-                if agent_type in OUTBOUND_AGENTS:
-                    agent = OUTBOUND_AGENTS[agent_type]
-                elif agent_type in INBOUND_AGENTS:
-                    agent = INBOUND_AGENTS[agent_type]
-                else:
-                    agent = OUTBOUND_AGENTS.get('roofing', list(OUTBOUND_AGENTS.values())[0])
-                
-                result = make_vapi_call(phone, agent['assistant_id'], agent_type, is_test=False)
+                # Make the call using the existing make_call function
+                result = make_call(phone, name="there", agent_type=agent_type, is_test=False)
                 self.send_json(result)
         else:
             self.send_error(404)

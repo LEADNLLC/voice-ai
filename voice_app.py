@@ -2343,6 +2343,39 @@ a{color:inherit;text-decoration:none}
 .pricing-card:not(.featured) .pricing-btn{background:rgba(255,255,255,0.1);color:var(--white)}
 .pricing-card.featured .pricing-btn{background:var(--cyan);color:var(--black)}
 
+/* Demo Section */
+.demo{padding:120px 40px;background:linear-gradient(180deg,rgba(0,209,255,0.02) 0%,transparent 100%)}
+.demo-inner{max-width:700px;margin:0 auto;text-align:center}
+.demo-sub{color:var(--gray-400);font-size:18px;margin-bottom:48px}
+.demo-box{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:24px;padding:32px;margin-bottom:32px}
+.demo-tabs{display:flex;gap:8px;margin-bottom:24px;background:rgba(0,0,0,0.3);border-radius:12px;padding:6px}
+.demo-tab{flex:1;padding:14px 20px;border:none;background:transparent;color:var(--gray-400);font-size:14px;font-weight:600;border-radius:8px;cursor:pointer;transition:all .2s}
+.demo-tab.active{background:var(--cyan);color:var(--black)}
+.demo-tab:hover:not(.active){background:rgba(255,255,255,0.05)}
+.demo-form{display:flex;flex-direction:column;gap:20px}
+.demo-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.demo-field{text-align:left}
+.demo-field label{display:block;font-size:13px;font-weight:600;margin-bottom:8px;color:var(--gray-400)}
+.demo-field input,.demo-field select{width:100%;padding:16px;border:1px solid rgba(255,255,255,0.1);border-radius:12px;background:rgba(0,0,0,0.3);color:var(--white);font-size:16px;transition:all .2s}
+.demo-field input:focus,.demo-field select:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 20px rgba(0,209,255,0.2)}
+.demo-field input::placeholder{color:var(--gray-600)}
+.demo-field select{cursor:pointer}
+.demo-field select option{background:var(--black);color:var(--white)}
+.demo-btn{width:100%;padding:20px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--cyan) 0%,#00a8cc 100%);color:var(--black);font-size:18px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px}
+.demo-btn:hover{transform:translateY(-3px);box-shadow:0 20px 60px rgba(0,209,255,0.4)}
+.demo-btn:active{transform:translateY(0)}
+.demo-btn-icon{font-size:24px}
+.demo-note{font-size:13px;color:var(--gray-500);margin-top:16px}
+.demo-features{display:flex;justify-content:center;gap:40px;flex-wrap:wrap}
+.demo-feature{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--gray-400)}
+.demo-feature span:first-child{font-size:18px}
+.demo-calling{display:none;flex-direction:column;align-items:center;gap:16px;padding:40px}
+.demo-calling.active{display:flex}
+.demo-calling-icon{font-size:64px;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.1);opacity:0.8}}
+.demo-calling-text{font-size:20px;font-weight:600}
+.demo-calling-sub{color:var(--gray-400);font-size:14px}
+
 /* CTA */
 .cta{padding:120px 40px;text-align:center;position:relative}
 .cta::before{content:'';position:absolute;top:0;left:50%;width:600px;height:400px;background:radial-gradient(ellipse,rgba(0,209,255,0.1) 0%,transparent 70%);transform:translateX(-50%);pointer-events:none}
@@ -2362,13 +2395,21 @@ a{color:inherit;text-decoration:none}
 .pulse-logo{animation:pulseRotate 3s linear infinite}
 @keyframes pulseRotate{0%{transform:rotate(0deg);opacity:.8}50%{opacity:1}100%{transform:rotate(360deg);opacity:.8}}
 
+/* Toast */
+.landing-toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:var(--cyan);color:var(--black);padding:16px 32px;border-radius:12px;font-weight:600;z-index:9999;display:none;box-shadow:0 10px 40px rgba(0,209,255,0.3)}
+.landing-toast.show{display:block;animation:slideUp 0.3s ease}
+.landing-toast.error{background:#EF4444;color:white}
+@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
 /* Mobile */
 @media(max-width:768px){
 .nav{padding:16px 20px}
 .nav-links{display:none}
 .hero{padding:120px 20px 60px}
 .stats{gap:40px}
-.features,.agents,.pricing,.cta{padding:80px 20px}
+.features,.agents,.pricing,.cta,.demo{padding:80px 20px}
+.demo-row{grid-template-columns:1fr}
+.demo-features{gap:20px}
 }
 </style>
 </head>
@@ -2462,6 +2503,88 @@ VOICE
 </div>
 </section>
 
+<section class="demo" id="demo">
+<div class="demo-inner">
+<div class="section-label">🎯 Try It Now</div>
+<h2 class="section-title">Experience VOICE in 30 seconds</h2>
+<p class="demo-sub">Enter your phone number, pick an agent, and receive a live AI call instantly. No signup required.</p>
+
+<div class="demo-box">
+<div class="demo-tabs">
+<button class="demo-tab active" id="tab-outbound" onclick="switchDemoTab('outbound')">📤 Outbound Sales</button>
+<button class="demo-tab" id="tab-inbound" onclick="switchDemoTab('inbound')">📥 Inbound Reception</button>
+</div>
+
+<div class="demo-form">
+<div class="demo-row">
+<div class="demo-field">
+<label>📱 Your Phone Number</label>
+<input type="tel" id="demo-phone" placeholder="+1 (555) 123-4567" />
+</div>
+<div class="demo-field">
+<label>🤖 Select Agent</label>
+<select id="demo-agent">
+<optgroup label="📤 Outbound Sales" id="opt-outbound">
+<option value="roofing">🏠 Paige - Roofing</option>
+<option value="solar">☀️ Luna - Solar</option>
+<option value="insurance">🛡️ Maya - Insurance</option>
+<option value="auto">🚗 Marco - Auto Sales</option>
+<option value="real_estate">🏡 Sofia - Real Estate</option>
+<option value="dental">🦷 Carmen - Dental</option>
+<option value="hvac">❄️ Jake - HVAC</option>
+<option value="legal">⚖️ Victoria - Legal</option>
+<option value="fitness">💪 Alex - Fitness</option>
+<option value="cleaning">🧹 Rosa - Cleaning</option>
+<option value="landscaping">🌳 Miguel - Landscaping</option>
+<option value="tax">📊 Diana - Tax</option>
+</optgroup>
+<optgroup label="📥 Inbound Reception" id="opt-inbound" style="display:none">
+<option value="medical_office">🏥 Sarah - Medical Office</option>
+<option value="dental_office">🦷 Emily - Dental Office</option>
+<option value="law_firm">⚖️ Grace - Law Firm</option>
+<option value="real_estate_office">🏡 Jennifer - Real Estate</option>
+<option value="auto_dealer">🚗 Mike - Auto Dealer</option>
+<option value="insurance_agency">🛡️ Amanda - Insurance</option>
+<option value="financial_advisor">💰 David - Financial</option>
+<option value="spa_salon">💅 Lisa - Spa & Salon</option>
+<option value="restaurant">🍽️ Maria - Restaurant</option>
+<option value="hotel">🏨 James - Hotel</option>
+<option value="gym">💪 Chris - Gym</option>
+<option value="veterinary">🐕 Ashley - Veterinary</option>
+<option value="therapy">🧠 Dr. Rachel - Therapy</option>
+<option value="tutoring">📚 Kevin - Tutoring</option>
+<option value="photography">📸 Nicole - Photography</option>
+</optgroup>
+</select>
+</div>
+</div>
+
+<button class="demo-btn" onclick="startDemoCall()">
+<span class="demo-btn-icon">📞</span>
+<span>Call Me Now</span>
+</button>
+
+<p class="demo-note">✨ You'll receive a call within 10 seconds</p>
+</div>
+</div>
+
+<div class="demo-features">
+<div class="demo-feature">
+<span>🔒</span>
+<span>No signup required</span>
+</div>
+<div class="demo-feature">
+<span>⚡</span>
+<span>Instant callback</span>
+</div>
+<div class="demo-feature">
+<span>🎯</span>
+<span>Real AI conversation</span>
+</div>
+</div>
+</div>
+</section>
+
 <section class="pricing" id="pricing">
 <div class="section-label">Pricing</div>
 <h2 class="section-title">Simple, transparent pricing</h2>
@@ -2526,6 +2649,116 @@ VOICE
 </div>
 <div class="footer-copy">© 2025 VOICE AI. All rights reserved.</div>
 </footer>
+
+<div class="landing-toast" id="landing-toast"></div>
+
+<script>
+function switchDemoTab(type) {
+    document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + type).classList.add('active');
+    
+    const select = document.getElementById('demo-agent');
+    const outbound = document.getElementById('opt-outbound');
+    const inbound = document.getElementById('opt-inbound');
+    
+    if (type === 'outbound') {
+        outbound.style.display = 'block';
+        inbound.style.display = 'none';
+        select.value = 'roofing';
+    } else {
+        outbound.style.display = 'none';
+        inbound.style.display = 'block';
+        select.value = 'medical_office';
+    }
+}
+
+function showLandingToast(msg, isError) {
+    const t = document.getElementById('landing-toast');
+    t.textContent = msg;
+    t.className = 'landing-toast show' + (isError ? ' error' : '');
+    setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+function formatPhoneNumber(phone) {
+    const digits = phone.replace(/\\D/g, '');
+    if (digits.length === 10) return '+1' + digits;
+    if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+    return '+' + digits;
+}
+
+async function startDemoCall() {
+    const phoneInput = document.getElementById('demo-phone');
+    const agentSelect = document.getElementById('demo-agent');
+    const phone = phoneInput.value.trim();
+    const agent = agentSelect.value;
+    
+    if (!phone) {
+        showLandingToast('Please enter your phone number', true);
+        phoneInput.focus();
+        return;
+    }
+    
+    const digits = phone.replace(/\\D/g, '');
+    if (digits.length < 10) {
+        showLandingToast('Please enter a valid phone number', true);
+        phoneInput.focus();
+        return;
+    }
+    
+    const btn = document.querySelector('.demo-btn');
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<span class="demo-btn-icon">📞</span><span>Calling you now...</span>';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    
+    try {
+        const response = await fetch('/api/demo-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                phone: formatPhoneNumber(phone),
+                agent_type: agent
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showLandingToast('📞 Calling you now! Answer your phone!', false);
+            btn.innerHTML = '<span class="demo-btn-icon">✅</span><span>Call initiated!</span>';
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }, 5000);
+        } else {
+            showLandingToast(result.error || 'Failed to initiate call', true);
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    } catch (error) {
+        showLandingToast('Connection error. Please try again.', true);
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    }
+}
+
+// Format phone as user types
+document.getElementById('demo-phone').addEventListener('input', function(e) {
+    let digits = e.target.value.replace(/\\D/g, '');
+    if (digits.length > 0) {
+        if (digits.length <= 3) {
+            e.target.value = '(' + digits;
+        } else if (digits.length <= 6) {
+            e.target.value = '(' + digits.slice(0,3) + ') ' + digits.slice(3);
+        } else {
+            e.target.value = '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6,10);
+        }
+    }
+});
+</script>
 
 </body>
 </html>'''
@@ -3098,6 +3331,25 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(save_integration(1, int_type, d))  # TODO: Get user_id from session
         elif path == '/api/zapier-webhooks':
             self.send_json(create_zapier_webhook(1, d.get('webhook_name', ''), d.get('webhook_url', ''), d.get('trigger_event', '')))
+        # Demo call from landing page
+        elif path == '/api/demo-call':
+            phone = d.get('phone', '')
+            agent_type = d.get('agent_type', 'roofing')
+            if not phone:
+                self.send_json({"success": False, "error": "Phone number required"})
+            elif not VAPI_API_KEY:
+                self.send_json({"success": False, "error": "VAPI not configured. Add API keys in Settings."})
+            else:
+                # Determine if inbound or outbound agent
+                if agent_type in OUTBOUND_AGENTS:
+                    agent = OUTBOUND_AGENTS[agent_type]
+                elif agent_type in INBOUND_AGENTS:
+                    agent = INBOUND_AGENTS[agent_type]
+                else:
+                    agent = OUTBOUND_AGENTS.get('roofing', list(OUTBOUND_AGENTS.values())[0])
+                
+                result = make_vapi_call(phone, agent['assistant_id'], agent_type, is_test=False)
+                self.send_json(result)
         else:
             self.send_error(404)
     def do_OPTIONS(self):

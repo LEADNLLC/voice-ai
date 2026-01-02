@@ -3054,6 +3054,24 @@ a{color:inherit;text-decoration:none}
 .booking-submit:disabled{opacity:0.6;cursor:not-allowed;transform:none}
 .booking-privacy{font-size:11px;color:var(--gray-500);text-align:center;margin-top:12px}
 
+/* Trial Signup Modal */
+.trial-modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(8px);z-index:10000;display:none;align-items:center;justify-content:center}
+.trial-modal-bg.show{display:flex}
+.trial-modal{background:var(--gray-900);border:1px solid rgba(0,209,255,0.3);border-radius:24px;padding:40px;max-width:420px;width:90%;position:relative}
+.trial-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--gray-400);font-size:24px;cursor:pointer}
+.trial-header{text-align:center;margin-bottom:28px}
+.trial-icon{font-size:56px;margin-bottom:16px}
+.trial-title{font-size:26px;font-weight:700;margin-bottom:8px}
+.trial-sub{color:var(--gray-400);font-size:14px}
+.trial-badge{display:inline-block;background:linear-gradient(135deg,#10b981,#059669);color:white;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;margin-top:12px}
+.trial-form{display:flex;flex-direction:column;gap:14px}
+.trial-field label{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:var(--gray-400)}
+.trial-field input{width:100%;padding:14px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;background:rgba(0,0,0,0.3);color:var(--white);font-size:15px}
+.trial-field input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 20px rgba(0,209,255,0.2)}
+.trial-submit{width:100%;padding:16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--cyan) 0%,#00a8cc 100%);color:var(--black);font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+.trial-submit:hover{transform:translateY(-2px);box-shadow:0 15px 40px rgba(0,209,255,0.4)}
+.trial-note{font-size:11px;color:var(--gray-500);text-align:center;margin-top:12px}
+
 /* As Seen On */
 .seen-on{padding:80px 40px;border-top:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05)}
 .seen-on-inner{max-width:1200px;margin:0 auto;text-align:center}
@@ -3155,7 +3173,7 @@ VOICE
 <h1>AI That<br>Closes Deals</h1>
 <p class="hero-sub">27 human-like AI agents that call your leads, book appointments, and never miss a follow-up. 24/7. On autopilot.</p>
 <div class="hero-ctas">
-<a href="/app" class="btn-primary">Start Free Trial →</a>
+<a href="#" onclick="openTrialModal(); return false;" class="btn-primary">Start Free Trial →</a>
 <a href="#demo" class="btn-secondary">Watch Demo</a>
 </div>
 <div class="stats">
@@ -3645,6 +3663,41 @@ VOICE
 </div>
 </div>
 
+<!-- Trial Signup Modal -->
+<div class="trial-modal-bg" id="trial-modal">
+<div class="trial-modal">
+<button class="trial-close" onclick="closeTrialModal()">×</button>
+<div class="trial-header">
+<div class="trial-icon">🚀</div>
+<div class="trial-title">Start Your Free Trial</div>
+<div class="trial-sub">Get full access to all AI agents for 7 days</div>
+<div class="trial-badge">✨ No credit card required</div>
+</div>
+
+<div class="trial-form">
+<div class="trial-field">
+<label>Full Name *</label>
+<input type="text" id="trial-name" placeholder="John Smith">
+</div>
+<div class="trial-field">
+<label>Email *</label>
+<input type="email" id="trial-email" placeholder="john@company.com">
+</div>
+<div class="trial-field">
+<label>Phone *</label>
+<input type="tel" id="trial-phone" placeholder="(555) 123-4567">
+</div>
+<div class="trial-field">
+<label>Password *</label>
+<input type="password" id="trial-password" placeholder="Min 6 characters">
+</div>
+
+<button class="trial-submit" onclick="submitTrialSignup()">🎯 Start My 7-Day Free Trial</button>
+<p class="trial-note">By signing up, you agree to our terms. After 7 days, contact us to continue.</p>
+</div>
+</div>
+</div>
+
 <div class="landing-toast" id="landing-toast"></div>
 
 <script>
@@ -3762,6 +3815,96 @@ function switchCreatorTab(type) {
     document.querySelectorAll('.creator-tab').forEach(t => t.classList.remove('active'));
     document.getElementById('creator-tab-' + type).classList.add('active');
 }
+
+// Trial Signup Modal
+function openTrialModal() {
+    document.getElementById('trial-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+    trackWebsiteVisit('trial_modal_opened');
+}
+
+function closeTrialModal() {
+    document.getElementById('trial-modal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+// Format trial phone as user types
+document.getElementById('trial-phone').addEventListener('input', function(e) {
+    let digits = e.target.value.replace(/\\D/g, '');
+    if (digits.length > 0) {
+        if (digits.length <= 3) {
+            e.target.value = '(' + digits;
+        } else if (digits.length <= 6) {
+            e.target.value = '(' + digits.slice(0,3) + ') ' + digits.slice(3);
+        } else {
+            e.target.value = '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6,10);
+        }
+    }
+});
+
+async function submitTrialSignup() {
+    const name = document.getElementById('trial-name').value.trim();
+    const email = document.getElementById('trial-email').value.trim();
+    const phone = document.getElementById('trial-phone').value.trim();
+    const password = document.getElementById('trial-password').value;
+    
+    if (!name) {
+        showLandingToast('Please enter your name', true);
+        return;
+    }
+    if (!email || !email.includes('@')) {
+        showLandingToast('Please enter a valid email', true);
+        return;
+    }
+    if (!phone || phone.replace(/\\D/g, '').length < 10) {
+        showLandingToast('Please enter a valid phone number', true);
+        return;
+    }
+    if (!password || password.length < 6) {
+        showLandingToast('Password must be at least 6 characters', true);
+        return;
+    }
+    
+    const btn = document.querySelector('.trial-submit');
+    const originalText = btn.textContent;
+    btn.textContent = 'Creating account...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/trial-signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                email: email,
+                phone: formatPhoneNumber(phone),
+                password: password
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showLandingToast('🎉 Account created! Redirecting...', false);
+            closeTrialModal();
+            setTimeout(() => {
+                window.location.href = '/app';
+            }, 1500);
+        } else {
+            showLandingToast(result.error || 'Something went wrong', true);
+        }
+    } catch (error) {
+        showLandingToast('Connection error. Please try again.', true);
+    }
+    
+    btn.textContent = originalText;
+    btn.disabled = false;
+}
+
+// Close trial modal on background click
+document.getElementById('trial-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeTrialModal();
+});
 
 // Format creator phone as user types
 document.getElementById('creator-phone').addEventListener('input', function(e) {
@@ -4752,6 +4895,56 @@ NEVER: Sound scripted, talk fast, skip waiting for response, end without booking
                 self.send_json({"success": True})
             except:
                 self.send_json({"success": True})  # Don't fail on tracking errors
+        # Trial Signup
+        elif path == '/api/trial-signup':
+            try:
+                name = d.get('name', '')
+                email = d.get('email', '')
+                phone = d.get('phone', '')
+                password = d.get('password', '')
+                
+                if not email or not password:
+                    self.send_json({"success": False, "error": "Email and password required"})
+                    return
+                
+                # Create user account
+                result = create_user(email, password, name, '', phone)
+                
+                if result.get('success'):
+                    print(f"🎉 NEW TRIAL SIGNUP: {name} - {email} - {phone}")
+                    
+                    # Notify owner via SMS
+                    sms_msg = f"""🎉 NEW TRIAL SIGNUP!
+
+Name: {name}
+Email: {email}
+Phone: {phone}
+
+They now have 7-day access! Follow up! 🔥"""
+                    
+                    if TWILIO_SID and TWILIO_TOKEN and OWNER_PHONE:
+                        send_sms(OWNER_PHONE, sms_msg, "trial_notification")
+                    
+                    # Send welcome SMS to new trial user
+                    if phone:
+                        welcome_msg = f"""Welcome to VoiceLab, {name}! 🎉
+
+Your 7-day free trial is now active!
+
+Log in anytime at: https://voicelab.live/app
+
+Questions? Reply to this text or book a call:
+{CALENDLY_LINK}
+
+Let's close some deals! 🚀"""
+                        send_sms(phone, welcome_msg, "trial_welcome")
+                    
+                    self.send_json({"success": True})
+                else:
+                    self.send_json({"success": False, "error": result.get('error', 'Could not create account')})
+            except Exception as e:
+                print(f"❌ Trial signup error: {e}")
+                self.send_json({"success": False, "error": str(e)})
         # Update website lead status
         elif path == '/api/website-lead-status':
             try:

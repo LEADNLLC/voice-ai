@@ -38,6 +38,11 @@ GOOGLE_CALENDAR_ID = os.environ.get('GOOGLE_CALENDAR_ID', 'primary')
 COMPANY_NAME = os.environ.get('COMPANY_NAME', 'VOICE')
 COMPANY_PHONE = os.environ.get('COMPANY_PHONE', '')
 
+# Owner notification settings
+OWNER_EMAIL = os.environ.get('OWNER_EMAIL', 'john.soderberg86@gmail.com')
+OWNER_PHONE = os.environ.get('OWNER_PHONE', '+17023240525')
+CALENDLY_LINK = os.environ.get('CALENDLY_LINK', 'https://calendly.com/voicelab/demo')
+
 COST_PER_MINUTE_VAPI = 0.05
 COST_PER_SMS = 0.0075
 FB_DAILY_BUDGET = 50.00
@@ -1718,6 +1723,49 @@ def send_sms(phone, message, message_type="general"):
         return {"success": False, "error": response.text}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+def notify_owner_new_lead(lead_data):
+    """Send SMS and email to owner when new lead comes in"""
+    name = lead_data.get('first_name', 'Someone')
+    phone = lead_data.get('phone', 'N/A')
+    email = lead_data.get('email', 'N/A')
+    industry = lead_data.get('industry', 'N/A')
+    
+    # Send SMS to owner
+    sms_msg = f"""🎯 NEW LEAD from VoiceLab!
+
+Name: {name}
+Phone: {phone}
+Email: {email}
+Industry: {industry}
+
+Call them ASAP! 🔥"""
+    
+    if TWILIO_SID and TWILIO_TOKEN and OWNER_PHONE:
+        send_sms(OWNER_PHONE, sms_msg, "owner_notification")
+        print(f"📱 Owner notified via SMS: {name}")
+    
+    # TODO: Add email notification when SMTP is configured
+    print(f"📧 Would email {OWNER_EMAIL}: New lead {name} - {phone}")
+
+def send_lead_welcome_sms(phone, name):
+    """Send welcome SMS to new lead with booking link"""
+    msg = f"""Hi {name}! 👋
+
+Thanks for checking out VoiceLab.live! We're excited to show you how AI can transform your business.
+
+Ready to see it in action? Book your free demo call here:
+{CALENDLY_LINK}
+
+Talk soon!
+- The VoiceLab Team"""
+    
+    if TWILIO_SID and TWILIO_TOKEN and phone:
+        result = send_sms(phone, msg, "lead_welcome")
+        if result.get('success'):
+            print(f"✅ Welcome SMS sent to {name} at {phone}")
+        return result
+    return {"success": False, "error": "SMS not configured"}
 
 def send_appointment_confirmation(appt_id):
     conn = sqlite3.connect(DB_PATH)
@@ -3551,18 +3599,18 @@ VOICE
 <div class="booking-header">
 <div class="booking-icon">📅</div>
 <div class="booking-title">Book Your Strategy Call</div>
-<div class="booking-sub">Schedule a free 15-minute call to discuss how VOICE can transform your business</div>
+<div class="booking-sub">We'll call you to discuss how VOICE can transform your business</div>
 </div>
 
 <div class="booking-form">
 <div class="booking-row">
 <div class="booking-field">
-<label>First Name *</label>
-<input type="text" id="book-fname" placeholder="John" required>
+<label>Name *</label>
+<input type="text" id="book-fname" placeholder="John Smith" required>
 </div>
 <div class="booking-field">
-<label>Last Name *</label>
-<input type="text" id="book-lname" placeholder="Smith" required>
+<label>Phone *</label>
+<input type="tel" id="book-phone" placeholder="(555) 123-4567" required>
 </div>
 </div>
 
@@ -3572,20 +3620,9 @@ VOICE
 </div>
 
 <div class="booking-field">
-<label>Phone Number *</label>
-<input type="tel" id="book-phone" placeholder="(555) 123-4567" required>
-</div>
-
-<div class="booking-field">
-<label>Company Name</label>
-<input type="text" id="book-company" placeholder="Your Company">
-</div>
-
-<div class="booking-row">
-<div class="booking-field">
 <label>Industry *</label>
 <select id="book-industry">
-<option value="">Select Industry</option>
+<option value="">What industry are you in?</option>
 <option value="Roofing">Roofing</option>
 <option value="Solar">Solar</option>
 <option value="HVAC">HVAC</option>
@@ -3597,54 +3634,13 @@ VOICE
 <option value="Real Estate">Real Estate</option>
 <option value="Insurance">Insurance</option>
 <option value="Auto Sales">Auto Sales</option>
-<option value="Fitness">Fitness</option>
 <option value="Home Services">Home Services</option>
 <option value="Other">Other</option>
 </select>
 </div>
-<div class="booking-field">
-<label>Monthly Call Volume</label>
-<select id="book-volume">
-<option value="">Select Volume</option>
-<option value="Under 500">Under 500 calls</option>
-<option value="500-2000">500 - 2,000 calls</option>
-<option value="2000-5000">2,000 - 5,000 calls</option>
-<option value="5000-10000">5,000 - 10,000 calls</option>
-<option value="10000+">10,000+ calls</option>
-</select>
-</div>
-</div>
 
-<div class="booking-field">
-<label>Preferred Day *</label>
-<div class="booking-times" id="booking-days">
-<button type="button" class="booking-time" data-day="Monday">Mon</button>
-<button type="button" class="booking-time" data-day="Tuesday">Tue</button>
-<button type="button" class="booking-time" data-day="Wednesday">Wed</button>
-<button type="button" class="booking-time" data-day="Thursday">Thu</button>
-<button type="button" class="booking-time" data-day="Friday">Fri</button>
-</div>
-</div>
-
-<div class="booking-field">
-<label>Preferred Time *</label>
-<div class="booking-times" id="booking-times">
-<button type="button" class="booking-time" data-time="9:00 AM">9 AM</button>
-<button type="button" class="booking-time" data-time="10:00 AM">10 AM</button>
-<button type="button" class="booking-time" data-time="11:00 AM">11 AM</button>
-<button type="button" class="booking-time" data-time="1:00 PM">1 PM</button>
-<button type="button" class="booking-time" data-time="2:00 PM">2 PM</button>
-<button type="button" class="booking-time" data-time="3:00 PM">3 PM</button>
-</div>
-</div>
-
-<div class="booking-field">
-<label>Anything specific you'd like to discuss?</label>
-<textarea id="book-notes" placeholder="Tell us about your current challenges or goals..."></textarea>
-</div>
-
-<button class="booking-submit" onclick="submitBooking()">🚀 Book My Strategy Call</button>
-<p class="booking-privacy">🔒 Your information is secure and will never be shared</p>
+<button class="booking-submit" onclick="submitBooking()">🚀 Book My Call</button>
+<p class="booking-privacy">🔒 We'll reach out within 24 hours</p>
 </div>
 </div>
 </div>
@@ -3850,13 +3846,9 @@ async function createCustomAgent() {
 }
 
 // Booking Modal Functions
-let selectedDay = '';
-let selectedTime = '';
-
 function openBookingModal() {
     document.getElementById('booking-modal').classList.add('show');
     document.body.style.overflow = 'hidden';
-    // Track page view
     trackWebsiteVisit('booking_modal_opened');
 }
 
@@ -3864,24 +3856,6 @@ function closeBookingModal() {
     document.getElementById('booking-modal').classList.remove('show');
     document.body.style.overflow = '';
 }
-
-// Day selection
-document.querySelectorAll('#booking-days .booking-time').forEach(btn => {
-    btn.addEventListener('click', function() {
-        document.querySelectorAll('#booking-days .booking-time').forEach(b => b.classList.remove('selected'));
-        this.classList.add('selected');
-        selectedDay = this.dataset.day;
-    });
-});
-
-// Time selection
-document.querySelectorAll('#booking-times .booking-time').forEach(btn => {
-    btn.addEventListener('click', function() {
-        document.querySelectorAll('#booking-times .booking-time').forEach(b => b.classList.remove('selected'));
-        this.classList.add('selected');
-        selectedTime = this.dataset.time;
-    });
-});
 
 // Format booking phone
 document.getElementById('book-phone').addEventListener('input', function(e) {
@@ -3898,17 +3872,12 @@ document.getElementById('book-phone').addEventListener('input', function(e) {
 });
 
 async function submitBooking() {
-    const fname = document.getElementById('book-fname').value.trim();
-    const lname = document.getElementById('book-lname').value.trim();
+    const name = document.getElementById('book-fname').value.trim();
     const email = document.getElementById('book-email').value.trim();
     const phone = document.getElementById('book-phone').value.trim();
-    const company = document.getElementById('book-company').value.trim();
     const industry = document.getElementById('book-industry').value;
-    const volume = document.getElementById('book-volume').value;
-    const notes = document.getElementById('book-notes').value.trim();
     
-    // Validation
-    if (!fname || !lname) {
+    if (!name) {
         showLandingToast('Please enter your name', true);
         return;
     }
@@ -3924,14 +3893,6 @@ async function submitBooking() {
         showLandingToast('Please select your industry', true);
         return;
     }
-    if (!selectedDay) {
-        showLandingToast('Please select a preferred day', true);
-        return;
-    }
-    if (!selectedTime) {
-        showLandingToast('Please select a preferred time', true);
-        return;
-    }
     
     const btn = document.querySelector('.booking-submit');
     const originalText = btn.textContent;
@@ -3943,16 +3904,10 @@ async function submitBooking() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                first_name: fname,
-                last_name: lname,
+                first_name: name,
                 email: email,
                 phone: formatPhoneNumber(phone),
-                company: company,
                 industry: industry,
-                call_volume: volume,
-                preferred_day: selectedDay,
-                preferred_time: selectedTime,
-                notes: notes,
                 source: 'website_booking'
             })
         });
@@ -3960,20 +3915,12 @@ async function submitBooking() {
         const result = await response.json();
         
         if (result.success) {
-            showLandingToast('🎉 Booked! We\\'ll call you ' + selectedDay + ' at ' + selectedTime, false);
+            showLandingToast('🎉 Got it! We\\'ll call you within 24 hours', false);
             closeBookingModal();
-            // Reset form
             document.getElementById('book-fname').value = '';
-            document.getElementById('book-lname').value = '';
             document.getElementById('book-email').value = '';
             document.getElementById('book-phone').value = '';
-            document.getElementById('book-company').value = '';
             document.getElementById('book-industry').value = '';
-            document.getElementById('book-volume').value = '';
-            document.getElementById('book-notes').value = '';
-            selectedDay = '';
-            selectedTime = '';
-            document.querySelectorAll('.booking-time').forEach(b => b.classList.remove('selected'));
         } else {
             showLandingToast(result.error || 'Something went wrong', true);
         }
@@ -4776,7 +4723,16 @@ NEVER: Sound scripted, talk fast, skip waiting for response, end without booking
                 lead_id = c.lastrowid
                 conn.commit()
                 conn.close()
-                print(f"🎯 New website lead: {d.get('first_name', '')} {d.get('last_name', '')} - {d.get('phone', '')} - {d.get('industry', '')}")
+                
+                print(f"🎯 New website lead: {d.get('first_name', '')} - {d.get('phone', '')} - {d.get('industry', '')}")
+                
+                # Notify owner via SMS
+                notify_owner_new_lead(d)
+                
+                # Send welcome SMS to lead with booking link
+                if d.get('phone'):
+                    send_lead_welcome_sms(d.get('phone'), d.get('first_name', 'there'))
+                
                 self.send_json({"success": True, "lead_id": lead_id})
             except Exception as e:
                 print(f"❌ Error saving website lead: {e}")

@@ -292,7 +292,196 @@ OPENER: "Hi... it's Diana... how you doing today?" [WAIT]
 Then: "Good... so you were looking for help with your taxes right?" [WAIT]
 
 QUESTIONS: Ask about tax situation, any issues, timeline.
-CLOSE: "I've got two consultation spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""}
+CLOSE: "I've got two consultation spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "plumbing": {"name": "Tony", "industry": "Plumbing", "icon": "🔧", "color": "#0891b2", "bilingual": False,
+        "first_message": "Hey... it's Tony... how's it going?",
+        "prompt": """You are Tony, a friendly plumbing specialist. Sound natural and helpful.
+
+OPENER: "Hey... it's Tony... how's it going?" [WAIT]
+Then: "Good... so hey, I'm not sure if we can help... but you were having some plumbing issues right?" [WAIT]
+"Cool... just have 2 quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what's going on, how long, any water damage.
+CLOSE: "I've got two spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "electrical": {"name": "Sparky", "industry": "Electrical", "icon": "⚡", "color": "#eab308", "bilingual": False,
+        "first_message": "Hey... it's Mike from the electrical company... how you doing?",
+        "prompt": """You are Mike (Sparky), a friendly electrician. Sound natural and knowledgeable.
+
+OPENER: "Hey... it's Mike from the electrical company... how you doing?" [WAIT]
+Then: "Good... so you were having some electrical issues right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what's happening, which rooms, how long.
+CLOSE: "I've got two spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "pest_control": {"name": "Brett", "industry": "Pest Control", "icon": "🐜", "color": "#65a30d", "bilingual": False,
+        "first_message": "Hey... it's Brett... how's it going?",
+        "prompt": """You are Brett, a friendly pest control specialist. Sound natural and reassuring.
+
+OPENER: "Hey... it's Brett... how's it going?" [WAIT]
+Then: "Good... so hey, you were having some pest issues right?" [WAIT]
+"No worries... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what they're seeing, where, how long.
+CLOSE: "I've got two spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "windows": {"name": "Crystal", "industry": "Windows & Doors", "icon": "🪟", "color": "#06b6d4", "bilingual": False,
+        "first_message": "Hi... it's Crystal... how you doing today?",
+        "prompt": """You are Crystal, a friendly window and door specialist. Sound warm and helpful.
+
+OPENER: "Hi... it's Crystal... how you doing today?" [WAIT]
+Then: "Good... so you were looking at getting some windows done right?" [WAIT]
+"Cool... just have a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask how many windows, what's wrong with current ones, timeline.
+CLOSE: "I've got two spots for a free estimate... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "flooring": {"name": "Frank", "industry": "Flooring", "icon": "🪵", "color": "#a16207", "bilingual": False,
+        "first_message": "Hey... it's Frank... how's it going?",
+        "prompt": """You are Frank, a friendly flooring specialist. Sound natural and knowledgeable.
+
+OPENER: "Hey... it's Frank... how's it going?" [WAIT]
+Then: "Good... so you were looking at getting some flooring done right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what type of flooring, how many rooms, timeline.
+CLOSE: "I've got two spots for an estimate... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "painting": {"name": "Pablo", "industry": "Painting", "icon": "🎨", "color": "#dc2626", "bilingual": True,
+        "first_message": "Hey... it's Pablo... how you doing today?",
+        "prompt": """You are Pablo, a friendly painting contractor. Sound warm and professional.
+
+OPENER: "Hey... it's Pablo... how you doing today?" [WAIT]
+Then: "Good... so you were looking to get some painting done right?" [WAIT]
+"Cool... just have a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask interior or exterior, how many rooms, timeline.
+CLOSE: "I've got two spots for a free estimate... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK.""",
+        "first_message_es": "Hola... soy Pablo... cómo estás hoy?",
+        "prompt_es": "Eres Pablo, contratista de pintura amable. SIEMPRE CIERRA CON 2 OPCIONES DE HORARIO."},
+
+    "garage_door": {"name": "Gary", "industry": "Garage Doors", "icon": "🚪", "color": "#4b5563", "bilingual": False,
+        "first_message": "Hey... it's Gary... how's it going?",
+        "prompt": """You are Gary, a friendly garage door specialist. Sound natural and helpful.
+
+OPENER: "Hey... it's Gary... how's it going?" [WAIT]
+Then: "Good... so you were having some garage door issues right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what's happening, how old is the door, opener working.
+CLOSE: "I've got two spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "pool": {"name": "Splash", "industry": "Pool Services", "icon": "🏊", "color": "#0ea5e9", "bilingual": False,
+        "first_message": "Hey... it's Steve from the pool company... how you doing?",
+        "prompt": """You are Steve (Splash), a friendly pool service specialist. Sound natural and helpful.
+
+OPENER: "Hey... it's Steve from the pool company... how you doing?" [WAIT]
+Then: "Good... so you were looking for some pool help right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what kind of pool, what they need done, timeline.
+CLOSE: "I've got two spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "moving": {"name": "Max", "industry": "Moving Services", "icon": "📦", "color": "#f59e0b", "bilingual": False,
+        "first_message": "Hey... it's Max... how's it going?",
+        "prompt": """You are Max, a friendly moving coordinator. Sound natural and helpful.
+
+OPENER: "Hey... it's Max... how's it going?" [WAIT]
+Then: "Good... so you were looking for help with a move right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask where from and to, how big is the place, when.
+CLOSE: "I've got two spots for a free estimate... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "security": {"name": "Sam", "industry": "Home Security", "icon": "🔐", "color": "#1e40af", "bilingual": False,
+        "first_message": "Hi... it's Sam... how you doing today?",
+        "prompt": """You are Sam, a friendly home security consultant. Sound professional and trustworthy.
+
+OPENER: "Hi... it's Sam... how you doing today?" [WAIT]
+Then: "Good... so you were looking at home security options right?" [WAIT]
+"Cool... just have a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask if they have a system now, what concerns them, home size.
+CLOSE: "I've got two spots for a free consultation... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "mortgage": {"name": "Morgan", "industry": "Mortgage/Loans", "icon": "🏦", "color": "#059669", "bilingual": False,
+        "first_message": "Hi... it's Morgan... how you doing today?",
+        "prompt": """You are Morgan, a friendly mortgage specialist. Sound professional and helpful.
+
+OPENER: "Hi... it's Morgan... how you doing today?" [WAIT]
+Then: "Good... so you were looking at mortgage options right?" [WAIT]
+"Cool... just have a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask if buying or refinancing, timeline, credit score ballpark.
+CLOSE: "I've got two spots for a free consultation... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "chiropractor": {"name": "Dr. Chris", "industry": "Chiropractic", "icon": "🦴", "color": "#7c3aed", "bilingual": False,
+        "first_message": "Hi... it's Chris from the chiropractic office... how you doing today?",
+        "prompt": """You are Chris, a friendly chiropractic coordinator. Sound warm and caring.
+
+OPENER: "Hi... it's Chris from the chiropractic office... how you doing today?" [WAIT]
+Then: "Good... so you were looking to get some relief right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what's bothering them, how long, seen a chiropractor before.
+CLOSE: "I've got two spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "medspa": {"name": "Bella", "industry": "Med Spa", "icon": "💉", "color": "#ec4899", "bilingual": False,
+        "first_message": "Hi... it's Bella... how you doing today?",
+        "prompt": """You are Bella, a friendly med spa consultant. Sound warm and professional.
+
+OPENER: "Hi... it's Bella... how you doing today?" [WAIT]
+Then: "Good... so you were looking at some treatments right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what treatments interest them, any done before, timeline.
+CLOSE: "I've got two spots for a free consultation... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "travel": {"name": "Journey", "industry": "Travel Agency", "icon": "✈️", "color": "#0284c7", "bilingual": False,
+        "first_message": "Hi... it's Jen from the travel agency... how you doing today?",
+        "prompt": """You are Jen (Journey), a friendly travel consultant. Sound enthusiastic and helpful.
+
+OPENER: "Hi... it's Jen from the travel agency... how you doing today?" [WAIT]
+Then: "Good... so you were looking at planning a trip right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask where they want to go, when, how many people.
+CLOSE: "I've got two spots to chat about your trip... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "wedding": {"name": "Grace", "industry": "Wedding Planning", "icon": "💒", "color": "#f472b6", "bilingual": False,
+        "first_message": "Hi... it's Grace... how you doing today?",
+        "prompt": """You are Grace, a friendly wedding coordinator. Sound warm and excited.
+
+OPENER: "Hi... it's Grace... how you doing today?" [WAIT]
+Then: "Good... so you were looking at wedding planning help right?... congrats by the way!" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask when's the date, how many guests, what help they need.
+CLOSE: "I've got two spots for a free consultation... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "tutoring": {"name": "Professor", "industry": "Tutoring", "icon": "📚", "color": "#6366f1", "bilingual": False,
+        "first_message": "Hi... it's Kevin from the tutoring center... how you doing today?",
+        "prompt": """You are Kevin (Professor), a friendly tutoring coordinator. Sound warm and encouraging.
+
+OPENER: "Hi... it's Kevin from the tutoring center... how you doing today?" [WAIT]
+Then: "Good... so you were looking at tutoring help right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what subject, what grade level, how often they need help.
+CLOSE: "I've got two spots for a free assessment... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""},
+
+    "pet_grooming": {"name": "Penny", "industry": "Pet Grooming", "icon": "🐕", "color": "#f97316", "bilingual": False,
+        "first_message": "Hi... it's Penny from the grooming salon... how you doing today?",
+        "prompt": """You are Penny, a friendly pet grooming coordinator. Sound warm and animal-loving.
+
+OPENER: "Hi... it's Penny from the grooming salon... how you doing today?" [WAIT]
+Then: "Good... so you were looking to get your fur baby groomed right?" [WAIT]
+"Cool... just a couple quick questions... sound fair?" [WAIT]
+
+QUESTIONS: Ask what kind of pet, breed, what services they need.
+CLOSE: "I've got two spots... tomorrow at 10 or Thursday at 2... which works?" ALWAYS BOOK."""}
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -562,6 +751,248 @@ SPECIFIC TO THERAPY:
 - Crisis: "If you're in crisis, I want to make sure you're safe. Are you having thoughts of harming yourself?"
 - Hours: Monday-Friday 8am-8pm, Saturday 9am-3pm
 - Get: Name, phone, type of therapy interested in, insurance"""
+    },
+
+    "inbound_plumbing": {
+        "name": "Tina", "industry": "Plumbing Company", "icon": "🔧", "color": "#0891b2", "bilingual": False,
+        "company": "FastFlow Plumbing",
+        "first_message": "Thank you for calling FastFlow Plumbing, this is Tina, how can I help you today?",
+        "prompt": """You are Tina, the helpful receptionist at FastFlow Plumbing.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "FastFlow Plumbing").replace("{agent_name}", "Tina") + """
+
+SPECIFIC TO PLUMBING:
+- Emergency: "Is water actively leaking? We have 24/7 emergency service"
+- Services: Drain cleaning, water heaters, leak repair, repiping, sewer lines
+- Get: Name, phone, address, what's the issue, is it an emergency"""
+    },
+
+    "inbound_electrical": {
+        "name": "Ellie", "industry": "Electrical Company", "icon": "⚡", "color": "#eab308", "bilingual": False,
+        "company": "Bright Spark Electric",
+        "first_message": "Bright Spark Electric, this is Ellie, how can I help you?",
+        "prompt": """You are Ellie, the friendly receptionist at Bright Spark Electric.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "Bright Spark Electric").replace("{agent_name}", "Ellie") + """
+
+SPECIFIC TO ELECTRICAL:
+- Safety first: "If you smell burning or see sparks, please turn off the breaker"
+- Services: Panel upgrades, outlet repair, lighting, ceiling fans, rewiring
+- Get: Name, phone, address, what's happening, is it an emergency"""
+    },
+
+    "inbound_hvac": {
+        "name": "Holly", "industry": "HVAC Company", "icon": "❄️", "color": "#0ea5e9", "bilingual": False,
+        "company": "ComfortZone HVAC",
+        "first_message": "ComfortZone HVAC, this is Holly, how can I help you today?",
+        "prompt": """You are Holly, the caring receptionist at ComfortZone HVAC.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "ComfortZone HVAC").replace("{agent_name}", "Holly") + """
+
+SPECIFIC TO HVAC:
+- Emergency: "Is it extremely hot/cold in your home? We have same-day service"
+- Services: AC repair, heating repair, installation, maintenance, duct cleaning
+- Get: Name, phone, address, AC or heat, what's happening"""
+    },
+
+    "inbound_roofing": {
+        "name": "Roxy", "industry": "Roofing Company", "icon": "🏠", "color": "#dc2626", "bilingual": False,
+        "company": "TopNotch Roofing",
+        "first_message": "TopNotch Roofing, this is Roxy, how can I help you?",
+        "prompt": """You are Roxy, the helpful receptionist at TopNotch Roofing.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "TopNotch Roofing").replace("{agent_name}", "Roxy") + """
+
+SPECIFIC TO ROOFING:
+- Storm damage: "We do free storm damage inspections and work with insurance"
+- Services: Repairs, replacements, inspections, gutters, siding
+- Get: Name, phone, address, what's going on with roof, any active leaks"""
+    },
+
+    "inbound_pest": {
+        "name": "Brenda", "industry": "Pest Control", "icon": "🐜", "color": "#65a30d", "bilingual": False,
+        "company": "BugFree Pest Control",
+        "first_message": "BugFree Pest Control, this is Brenda, how can I help you?",
+        "prompt": """You are Brenda, the reassuring receptionist at BugFree Pest Control.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "BugFree Pest Control").replace("{agent_name}", "Brenda") + """
+
+SPECIFIC TO PEST:
+- Be reassuring: "Don't worry, we deal with this all the time"
+- Services: Ants, roaches, rodents, termites, bed bugs, wildlife
+- Get: Name, phone, address, what they're seeing, how long"""
+    },
+
+    "inbound_moving": {
+        "name": "Maya", "industry": "Moving Company", "icon": "📦", "color": "#f59e0b", "bilingual": False,
+        "company": "EasyMove Relocations",
+        "first_message": "EasyMove Relocations, this is Maya, how can I help you today?",
+        "prompt": """You are Maya, the organized receptionist at EasyMove Relocations.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "EasyMove Relocations").replace("{agent_name}", "Maya") + """
+
+SPECIFIC TO MOVING:
+- Services: Local moves, long distance, packing, storage, commercial
+- Quote info needed: Moving from, moving to, size of home, date
+- Get: Name, phone, from address, to address, move date"""
+    },
+
+    "inbound_solar": {
+        "name": "Sunny", "industry": "Solar Company", "icon": "☀️", "color": "#f59e0b", "bilingual": False,
+        "company": "SunPower Solar",
+        "first_message": "SunPower Solar, this is Sunny, how can I help you today?",
+        "prompt": """You are Sunny, the enthusiastic receptionist at SunPower Solar.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "SunPower Solar").replace("{agent_name}", "Sunny") + """
+
+SPECIFIC TO SOLAR:
+- "Going solar is a great decision! We offer free consultations"
+- Services: Solar panels, battery storage, EV chargers
+- Get: Name, phone, address, do they own the home, electric bill estimate"""
+    },
+
+    "inbound_pool": {
+        "name": "Brooke", "industry": "Pool Service", "icon": "🏊", "color": "#06b6d4", "bilingual": False,
+        "company": "Crystal Clear Pools",
+        "first_message": "Crystal Clear Pools, this is Brooke, how can I help you?",
+        "prompt": """You are Brooke, the friendly receptionist at Crystal Clear Pools.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "Crystal Clear Pools").replace("{agent_name}", "Brooke") + """
+
+SPECIFIC TO POOL:
+- Services: Weekly cleaning, repairs, equipment, opening/closing, remodeling
+- Get: Name, phone, address, type of pool, what service needed"""
+    },
+
+    "inbound_flooring": {
+        "name": "Flora", "industry": "Flooring Company", "icon": "🪵", "color": "#a16207", "bilingual": False,
+        "company": "FloorCraft Installations",
+        "first_message": "FloorCraft Installations, this is Flora, how can I help you?",
+        "prompt": """You are Flora, the helpful receptionist at FloorCraft Installations.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "FloorCraft Installations").replace("{agent_name}", "Flora") + """
+
+SPECIFIC TO FLOORING:
+- Services: Hardwood, laminate, tile, carpet, vinyl, refinishing
+- "We offer free in-home estimates!"
+- Get: Name, phone, address, type of flooring interested in, how many rooms"""
+    },
+
+    "inbound_painting": {
+        "name": "Patty", "industry": "Painting Company", "icon": "🎨", "color": "#dc2626", "bilingual": True,
+        "company": "Perfect Brush Painting",
+        "first_message": "Perfect Brush Painting, this is Patty, how can I help you?",
+        "prompt": """You are Patty, the friendly receptionist at Perfect Brush Painting.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "Perfect Brush Painting").replace("{agent_name}", "Patty") + """
+
+SPECIFIC TO PAINTING:
+- Services: Interior, exterior, cabinets, commercial, pressure washing
+- "We offer free color consultations and estimates!"
+- Get: Name, phone, address, interior or exterior, how many rooms""",
+        "first_message_es": "Perfect Brush Painting, habla Patty, ¿en qué puedo ayudarle?",
+        "prompt_es": "Eres Patty, recepcionista amable de la compañía de pintura."
+    },
+
+    "inbound_garage": {
+        "name": "Gary", "industry": "Garage Door Company", "icon": "🚪", "color": "#4b5563", "bilingual": False,
+        "company": "LiftMaster Garage Doors",
+        "first_message": "LiftMaster Garage Doors, this is Gary, how can I help you?",
+        "prompt": """You are Gary, the helpful receptionist at LiftMaster Garage Doors.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "LiftMaster Garage Doors").replace("{agent_name}", "Gary") + """
+
+SPECIFIC TO GARAGE DOORS:
+- Emergency: "Is your car stuck inside? We offer same-day service"
+- Services: Repair, replacement, openers, springs, maintenance
+- Get: Name, phone, address, what's happening, single or double door"""
+    },
+
+    "inbound_window": {
+        "name": "Wendy", "industry": "Window Company", "icon": "🪟", "color": "#06b6d4", "bilingual": False,
+        "company": "ClearView Windows",
+        "first_message": "ClearView Windows, this is Wendy, how can I help you today?",
+        "prompt": """You are Wendy, the friendly receptionist at ClearView Windows.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "ClearView Windows").replace("{agent_name}", "Wendy") + """
+
+SPECIFIC TO WINDOWS:
+- Services: Replacement windows, doors, patio doors, storm windows
+- "We offer free in-home consultations and estimates!"
+- Get: Name, phone, address, how many windows, any specific concerns"""
+    },
+
+    "inbound_security": {
+        "name": "Sam", "industry": "Home Security", "icon": "🔐", "color": "#1e40af", "bilingual": False,
+        "company": "SafeHome Security",
+        "first_message": "SafeHome Security, this is Sam, how can I help you?",
+        "prompt": """You are Sam, the professional receptionist at SafeHome Security.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "SafeHome Security").replace("{agent_name}", "Sam") + """
+
+SPECIFIC TO SECURITY:
+- Services: Alarm systems, cameras, smart home, monitoring, access control
+- "We offer free security assessments!"
+- Get: Name, phone, address, own or rent, specific concerns"""
+    },
+
+    "inbound_mortgage": {
+        "name": "Morgan", "industry": "Mortgage Company", "icon": "🏦", "color": "#059669", "bilingual": False,
+        "company": "HomeKey Mortgage",
+        "first_message": "HomeKey Mortgage, this is Morgan, how can I help you today?",
+        "prompt": """You are Morgan, the professional receptionist at HomeKey Mortgage.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "HomeKey Mortgage").replace("{agent_name}", "Morgan") + """
+
+SPECIFIC TO MORTGAGE:
+- Services: Purchase loans, refinance, FHA, VA, jumbo, reverse mortgage
+- "I can schedule a free consultation with one of our loan officers"
+- Get: Name, phone, buying or refinancing, timeline, credit score ballpark"""
+    },
+
+    "inbound_chiro": {
+        "name": "Christie", "industry": "Chiropractic Office", "icon": "🦴", "color": "#7c3aed", "bilingual": False,
+        "company": "AlignWell Chiropractic",
+        "first_message": "AlignWell Chiropractic, this is Christie, how can I help you?",
+        "prompt": """You are Christie, the caring receptionist at AlignWell Chiropractic.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "AlignWell Chiropractic").replace("{agent_name}", "Christie") + """
+
+SPECIFIC TO CHIROPRACTIC:
+- New patients: "First visit includes consultation, exam, and adjustment if needed"
+- Services: Adjustments, massage, physical therapy, x-rays
+- Get: Name, phone, what's bothering them, how long, seen a chiropractor before"""
+    },
+
+    "inbound_medspa": {
+        "name": "Bella", "industry": "Med Spa", "icon": "💉", "color": "#ec4899", "bilingual": False,
+        "company": "Glow Med Spa",
+        "first_message": "Glow Med Spa, this is Bella, how can I help you today?",
+        "prompt": """You are Bella, the elegant receptionist at Glow Med Spa.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "Glow Med Spa").replace("{agent_name}", "Bella") + """
+
+SPECIFIC TO MED SPA:
+- Services: Botox, fillers, laser treatments, facials, body contouring
+- "We offer free consultations for all treatments!"
+- Get: Name, phone, what treatments interest them, any done before"""
+    },
+
+    "inbound_daycare": {
+        "name": "Daisy", "industry": "Daycare Center", "icon": "👶", "color": "#f472b6", "bilingual": True,
+        "company": "Little Stars Daycare",
+        "first_message": "Little Stars Daycare, this is Daisy, how can I help you?",
+        "prompt": """You are Daisy, the warm and friendly receptionist at Little Stars Daycare.
+
+""" + RECEPTIONIST_CORE.replace("{company_name}", "Little Stars Daycare").replace("{agent_name}", "Daisy") + """
+
+SPECIFIC TO DAYCARE:
+- "We'd love to show you around! Tours are available daily"
+- Ages: Infants through Pre-K
+- Hours: Monday-Friday 6:30am-6:30pm
+- Get: Name, phone, child's age, when they need care to start""",
+        "first_message_es": "Little Stars Daycare, habla Daisy, ¿en qué puedo ayudarle?",
+        "prompt_es": "Eres Daisy, recepcionista cálida de la guardería."
     }
 }
 
@@ -2489,6 +2920,67 @@ a{color:inherit;text-decoration:none}
 .demo-calling-text{font-size:20px;font-weight:600}
 .demo-calling-sub{color:var(--gray-400);font-size:14px}
 
+/* Custom Agent Creator */
+.creator{padding:120px 40px;background:linear-gradient(180deg,transparent 0%,rgba(0,209,255,0.02) 100%)}
+.creator-inner{max-width:800px;margin:0 auto;text-align:center}
+.creator-sub{color:var(--gray-400);font-size:18px;margin-bottom:48px}
+.creator-box{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:24px;padding:32px;text-align:left}
+.creator-tabs{display:flex;gap:8px;margin-bottom:24px;background:rgba(0,0,0,0.3);border-radius:12px;padding:6px}
+.creator-tab{flex:1;padding:14px 20px;border:none;background:transparent;color:var(--gray-400);font-size:14px;font-weight:600;border-radius:8px;cursor:pointer;transition:all .2s;text-align:center}
+.creator-tab.active{background:var(--cyan);color:var(--black)}
+.creator-form{display:flex;flex-direction:column;gap:20px}
+.creator-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.creator-field{text-align:left}
+.creator-field label{display:block;font-size:13px;font-weight:600;margin-bottom:8px;color:var(--gray-400)}
+.creator-field input,.creator-field textarea{width:100%;padding:16px;border:1px solid rgba(255,255,255,0.1);border-radius:12px;background:rgba(0,0,0,0.3);color:var(--white);font-size:16px;font-family:inherit;transition:all .2s}
+.creator-field input:focus,.creator-field textarea:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 20px rgba(0,209,255,0.2)}
+.creator-field input::placeholder,.creator-field textarea::placeholder{color:var(--gray-600)}
+.creator-field textarea{min-height:100px;resize:vertical}
+.creator-btn{width:100%;padding:20px;border:none;border-radius:12px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;font-size:18px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px}
+.creator-btn:hover{transform:translateY(-3px);box-shadow:0 20px 60px rgba(16,185,129,0.4)}
+.creator-note{font-size:13px;color:var(--gray-500);margin-top:16px;text-align:center}
+
+/* As Seen On */
+.seen-on{padding:80px 40px;border-top:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05)}
+.seen-on-inner{max-width:1200px;margin:0 auto;text-align:center}
+.seen-on-label{font-size:12px;text-transform:uppercase;letter-spacing:3px;color:var(--gray-500);margin-bottom:40px}
+.seen-on-logos{display:flex;justify-content:center;align-items:center;gap:60px;flex-wrap:wrap;opacity:0.6}
+.seen-on-logo{font-size:24px;font-weight:700;color:var(--gray-400);display:flex;align-items:center;gap:8px}
+.seen-on-logo span{font-size:14px;font-weight:400}
+
+/* Reviews */
+.reviews{padding:120px 40px}
+.reviews-inner{max-width:1200px;margin:0 auto}
+.reviews-header{text-align:center;margin-bottom:60px}
+.reviews-stats{display:flex;justify-content:center;gap:60px;margin-top:32px;flex-wrap:wrap}
+.reviews-stat{text-align:center}
+.reviews-stat-value{font-size:48px;font-weight:700;color:var(--cyan)}
+.reviews-stat-label{font-size:14px;color:var(--gray-400);margin-top:4px}
+.reviews-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.review-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:28px;transition:all .3s}
+.review-card:hover{border-color:rgba(0,209,255,0.2);transform:translateY(-4px)}
+.review-stars{color:#fbbf24;font-size:16px;margin-bottom:16px;letter-spacing:2px}
+.review-text{color:var(--gray-300);font-size:15px;line-height:1.7;margin-bottom:20px;font-style:italic}
+.review-author{display:flex;align-items:center;gap:12px}
+.review-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),#0ea5e9);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:16px}
+.review-info{text-align:left}
+.review-name{font-weight:600;font-size:14px}
+.review-role{font-size:12px;color:var(--gray-500)}
+.review-verified{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--success);margin-top:4px}
+
+/* Updated Pricing */
+.pricing{padding:120px 40px}
+.pricing-inner{max-width:900px;margin:0 auto;text-align:center}
+.pricing-box{background:linear-gradient(135deg,rgba(0,209,255,0.05) 0%,rgba(0,209,255,0.02) 100%);border:1px solid rgba(0,209,255,0.2);border-radius:24px;padding:60px 40px;margin-top:48px}
+.pricing-headline{font-size:32px;font-weight:700;margin-bottom:16px}
+.pricing-sub{color:var(--gray-400);font-size:18px;margin-bottom:40px;max-width:500px;margin-left:auto;margin-right:auto}
+.pricing-features-list{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;text-align:left;max-width:500px;margin:0 auto 40px}
+.pricing-feature-item{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--gray-300)}
+.pricing-feature-item::before{content:'✓';color:var(--cyan);font-weight:700;font-size:18px}
+.pricing-cta-btn{display:inline-flex;align-items:center;gap:12px;padding:20px 48px;background:var(--cyan);color:var(--black);font-size:18px;font-weight:700;border-radius:12px;text-decoration:none;transition:all .2s}
+.pricing-cta-btn:hover{transform:translateY(-3px);box-shadow:0 20px 60px rgba(0,209,255,0.4)}
+.pricing-note{margin-top:20px;font-size:13px;color:var(--gray-500)}
+
 /* CTA */
 .cta{padding:120px 40px;text-align:center;position:relative}
 .cta::before{content:'';position:absolute;top:0;left:50%;width:600px;height:400px;background:radial-gradient(ellipse,rgba(0,209,255,0.1) 0%,transparent 70%);transform:translateX(-50%);pointer-events:none}
@@ -2517,11 +3009,14 @@ a{color:inherit;text-decoration:none}
 /* Mobile */
 @media(max-width:768px){
 .nav{padding:16px 20px}
+.reviews-grid{grid-template-columns:1fr}
+.pricing-features-list{grid-template-columns:1fr}
+.seen-on-logos{gap:30px}
 .nav-links{display:none}
 .hero{padding:120px 20px 60px}
 .stats{gap:40px}
-.features,.agents,.pricing,.cta,.demo{padding:80px 20px}
-.demo-row{grid-template-columns:1fr}
+.features,.agents,.pricing,.cta,.demo,.creator{padding:80px 20px}
+.demo-row,.creator-row{grid-template-columns:1fr}
 .demo-features{gap:20px}
 }
 </style>
@@ -2554,6 +3049,21 @@ VOICE
 <div class="stat"><div class="stat-value">12</div><div class="stat-label">Industries</div></div>
 <div class="stat"><div class="stat-value">24/7</div><div class="stat-label">Always On</div></div>
 <div class="stat"><div class="stat-value">3x</div><div class="stat-label">More Bookings</div></div>
+</div>
+</section>
+
+<section class="seen-on">
+<div class="seen-on-inner">
+<div class="seen-on-label">As Featured In</div>
+<div class="seen-on-logos">
+<div class="seen-on-logo">📺 ABC News</div>
+<div class="seen-on-logo">🔵 CBS</div>
+<div class="seen-on-logo">🟠 NBC</div>
+<div class="seen-on-logo">📰 Forbes</div>
+<div class="seen-on-logo">🔴 CNN</div>
+<div class="seen-on-logo">💼 Business Insider</div>
+<div class="seen-on-logo">🌐 TechCrunch</div>
+</div>
 </div>
 </section>
 
@@ -2598,7 +3108,7 @@ VOICE
 <div class="agents-inner">
 <div class="section-label">AI Agents</div>
 <h2 class="section-title">Meet your sales team</h2>
-<p style="color:var(--gray-400);max-width:600px;margin:0 auto">12 outbound appointment setters and 15 inbound receptionists. Each trained for their specific industry.</p>
+<p style="color:var(--gray-400);max-width:600px;margin:0 auto">30 outbound appointment setters and 15 inbound receptionists. Each trained for their specific industry.</p>
 <div class="agents-grid">
 <div class="agent-card"><div class="agent-icon">🏠</div><div class="agent-name">Paige</div><div class="agent-role">Roofing</div></div>
 <div class="agent-card"><div class="agent-icon">☀️</div><div class="agent-name">Luna</div><div class="agent-role">Solar</div></div>
@@ -2612,6 +3122,23 @@ VOICE
 <div class="agent-card"><div class="agent-icon">🧹</div><div class="agent-name">Rosa</div><div class="agent-role">Cleaning</div></div>
 <div class="agent-card"><div class="agent-icon">🌳</div><div class="agent-name">Miguel</div><div class="agent-role">Landscaping</div></div>
 <div class="agent-card"><div class="agent-icon">📊</div><div class="agent-name">Diana</div><div class="agent-role">Tax</div></div>
+<div class="agent-card"><div class="agent-icon">🔧</div><div class="agent-name">Tony</div><div class="agent-role">Plumbing</div></div>
+<div class="agent-card"><div class="agent-icon">⚡</div><div class="agent-name">Sparky</div><div class="agent-role">Electrical</div></div>
+<div class="agent-card"><div class="agent-icon">🐜</div><div class="agent-name">Brett</div><div class="agent-role">Pest Control</div></div>
+<div class="agent-card"><div class="agent-icon">🪟</div><div class="agent-name">Crystal</div><div class="agent-role">Windows</div></div>
+<div class="agent-card"><div class="agent-icon">🪵</div><div class="agent-name">Frank</div><div class="agent-role">Flooring</div></div>
+<div class="agent-card"><div class="agent-icon">🎨</div><div class="agent-name">Pablo</div><div class="agent-role">Painting</div></div>
+<div class="agent-card"><div class="agent-icon">🚪</div><div class="agent-name">Gary</div><div class="agent-role">Garage Doors</div></div>
+<div class="agent-card"><div class="agent-icon">🏊</div><div class="agent-name">Splash</div><div class="agent-role">Pool Services</div></div>
+<div class="agent-card"><div class="agent-icon">📦</div><div class="agent-name">Max</div><div class="agent-role">Moving</div></div>
+<div class="agent-card"><div class="agent-icon">🔐</div><div class="agent-name">Sam</div><div class="agent-role">Security</div></div>
+<div class="agent-card"><div class="agent-icon">🏦</div><div class="agent-name">Morgan</div><div class="agent-role">Mortgage</div></div>
+<div class="agent-card"><div class="agent-icon">🦴</div><div class="agent-name">Dr. Chris</div><div class="agent-role">Chiropractic</div></div>
+<div class="agent-card"><div class="agent-icon">💉</div><div class="agent-name">Bella</div><div class="agent-role">Med Spa</div></div>
+<div class="agent-card"><div class="agent-icon">✈️</div><div class="agent-name">Journey</div><div class="agent-role">Travel</div></div>
+<div class="agent-card"><div class="agent-icon">💒</div><div class="agent-name">Grace</div><div class="agent-role">Wedding</div></div>
+<div class="agent-card"><div class="agent-icon">📚</div><div class="agent-name">Professor</div><div class="agent-role">Tutoring</div></div>
+<div class="agent-card"><div class="agent-icon">🐕</div><div class="agent-name">Penny</div><div class="agent-role">Pet Grooming</div></div>
 </div>
 </div>
 </section>
@@ -2642,7 +3169,7 @@ VOICE
 <option value="solar">☀️ Luna - Solar</option>
 <option value="insurance">🛡️ Maya - Insurance</option>
 <option value="auto">🚗 Marco - Auto Sales</option>
-<option value="real_estate">🏡 Sofia - Real Estate</option>
+<option value="realtor">🏡 Sofia - Real Estate</option>
 <option value="dental">🦷 Carmen - Dental</option>
 <option value="hvac">❄️ Jake - HVAC</option>
 <option value="legal">⚖️ Victoria - Legal</option>
@@ -2650,6 +3177,23 @@ VOICE
 <option value="cleaning">🧹 Rosa - Cleaning</option>
 <option value="landscaping">🌳 Miguel - Landscaping</option>
 <option value="tax">📊 Diana - Tax</option>
+<option value="plumbing">🔧 Tony - Plumbing</option>
+<option value="electrical">⚡ Sparky - Electrical</option>
+<option value="pest_control">🐜 Brett - Pest Control</option>
+<option value="windows">🪟 Crystal - Windows</option>
+<option value="flooring">🪵 Frank - Flooring</option>
+<option value="painting">🎨 Pablo - Painting</option>
+<option value="garage_door">🚪 Gary - Garage Doors</option>
+<option value="pool">🏊 Splash - Pool Services</option>
+<option value="moving">📦 Max - Moving</option>
+<option value="security">🔐 Sam - Security</option>
+<option value="mortgage">🏦 Morgan - Mortgage</option>
+<option value="chiropractor">🦴 Dr. Chris - Chiropractic</option>
+<option value="medspa">💉 Bella - Med Spa</option>
+<option value="travel">✈️ Journey - Travel</option>
+<option value="wedding">💒 Grace - Wedding</option>
+<option value="tutoring">📚 Professor - Tutoring</option>
+<option value="pet_grooming">🐕 Penny - Pet Grooming</option>
 </optgroup>
 <optgroup label="📥 Inbound Reception" id="opt-inbound" style="display:none">
 <option value="inbound_medical">🏥 Sarah - Medical Office</option>
@@ -2664,9 +3208,24 @@ VOICE
 <option value="inbound_hotel">🏨 James - Hotel</option>
 <option value="inbound_gym">💪 Chris - Gym</option>
 <option value="inbound_vet">🐕 Ashley - Veterinary</option>
-<option value="inbound_therapy">🧠 Dr. Rachel - Therapy</option>
-<option value="inbound_tutoring">📚 Kevin - Tutoring</option>
-<option value="inbound_photo">📸 Nicole - Photography</option>
+<option value="inbound_therapy">🧠 Michelle - Therapy</option>
+<option value="inbound_plumbing">🔧 Tina - Plumbing</option>
+<option value="inbound_electrical">⚡ Ellie - Electrical</option>
+<option value="inbound_hvac">❄️ Holly - HVAC</option>
+<option value="inbound_roofing">🏠 Roxy - Roofing</option>
+<option value="inbound_pest">🐜 Brenda - Pest Control</option>
+<option value="inbound_moving">📦 Maya - Moving</option>
+<option value="inbound_solar">☀️ Sunny - Solar</option>
+<option value="inbound_pool">🏊 Brooke - Pool Service</option>
+<option value="inbound_flooring">🪵 Flora - Flooring</option>
+<option value="inbound_painting">🎨 Patty - Painting</option>
+<option value="inbound_garage">🚪 Gary - Garage Doors</option>
+<option value="inbound_window">🪟 Wendy - Windows</option>
+<option value="inbound_security">🔐 Sam - Security</option>
+<option value="inbound_mortgage">🏦 Morgan - Mortgage</option>
+<option value="inbound_chiro">🦴 Christie - Chiropractic</option>
+<option value="inbound_medspa">💉 Bella - Med Spa</option>
+<option value="inbound_daycare">👶 Daisy - Daycare</option>
 </optgroup>
 </select>
 </div>
@@ -2698,47 +3257,203 @@ VOICE
 </div>
 </section>
 
+<section class="creator" id="creator">
+<div class="creator-inner">
+<div class="section-label">🛠️ Custom Agent</div>
+<h2 class="section-title">Create Your Own AI Agent</h2>
+<p class="creator-sub">Don't see your industry? Build a custom agent in seconds. Same natural conversation flow, tailored to your business.</p>
+
+<div class="creator-box">
+<div class="creator-tabs">
+<button class="creator-tab active" id="creator-tab-outbound" onclick="switchCreatorTab('outbound')">📤 Outbound Sales Agent</button>
+<button class="creator-tab" id="creator-tab-inbound" onclick="switchCreatorTab('inbound')">📥 Inbound Receptionist</button>
+</div>
+
+<div class="creator-form">
+<div class="creator-row">
+<div class="creator-field">
+<label>📱 Your Phone Number</label>
+<input type="tel" id="creator-phone" placeholder="+1 (555) 123-4567" />
+</div>
+<div class="creator-field">
+<label>🏢 Your Company Name</label>
+<input type="text" id="creator-company" placeholder="Acme Services" />
+</div>
+</div>
+
+<div class="creator-row">
+<div class="creator-field">
+<label>🏭 Your Industry</label>
+<input type="text" id="creator-industry" placeholder="e.g. Tree Service, Concrete, Locksmith..." />
+</div>
+<div class="creator-field">
+<label>👤 Agent Name</label>
+<input type="text" id="creator-agent-name" placeholder="e.g. Jessica, Mike, Sarah..." />
+</div>
+</div>
+
+<div class="creator-field">
+<label>📝 Services You Offer (optional)</label>
+<textarea id="creator-services" placeholder="e.g. Tree trimming, removal, stump grinding, emergency service..."></textarea>
+</div>
+
+<button class="creator-btn" onclick="createCustomAgent()">
+<span>🚀</span>
+<span>Create & Test My Agent</span>
+</button>
+
+<p class="creator-note">⚡ Your custom agent will call you instantly using our proven conversation flow</p>
+</div>
+</div>
+</div>
+</section>
+
+<section class="reviews" id="reviews">
+<div class="reviews-inner">
+<div class="reviews-header">
+<div class="section-label">⭐ Customer Reviews</div>
+<h2 class="section-title">Trusted by 2,500+ businesses</h2>
+<div class="reviews-stats">
+<div class="reviews-stat"><div class="reviews-stat-value">4.9</div><div class="reviews-stat-label">Average Rating</div></div>
+<div class="reviews-stat"><div class="reviews-stat-value">2,547</div><div class="reviews-stat-label">Happy Customers</div></div>
+<div class="reviews-stat"><div class="reviews-stat-value">1.2M+</div><div class="reviews-stat-label">Calls Made</div></div>
+</div>
+</div>
+<div class="reviews-grid">
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"We went from booking 8 appointments a week to 47. The AI sounds so real that customers don't even know. This completely transformed our roofing business."</div>
+<div class="review-author">
+<div class="review-avatar">JM</div>
+<div class="review-info">
+<div class="review-name">Jake Morrison</div>
+<div class="review-role">Owner, Morrison Roofing Co.</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"I was skeptical at first, but VOICE paid for itself in the first week. Our show rate went from 40% to 78% because the AI confirms appointments perfectly."</div>
+<div class="review-author">
+<div class="review-avatar">SL</div>
+<div class="review-info">
+<div class="review-name">Sarah Liu</div>
+<div class="review-role">CEO, Bright Solar Solutions</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"The receptionist AI handles 200+ calls a day for our dental practice. Patients love 'Emily' and we've cut our front desk costs by 60%."</div>
+<div class="review-author">
+<div class="review-avatar">DR</div>
+<div class="review-info">
+<div class="review-name">Dr. Robert Chen</div>
+<div class="review-role">Founder, Smile Dental Group</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"We run Facebook ads 24/7 and VOICE calls every lead within 60 seconds. Our cost per acquisition dropped by 52%. Best investment we ever made."</div>
+<div class="review-author">
+<div class="review-avatar">MR</div>
+<div class="review-info">
+<div class="review-name">Marcus Rodriguez</div>
+<div class="review-role">Marketing Director, Elite Insurance</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"I manage 12 HVAC technicians and scheduling was a nightmare. Now the AI books everything perfectly and even handles reschedules. Game changer."</div>
+<div class="review-author">
+<div class="review-avatar">TW</div>
+<div class="review-info">
+<div class="review-name">Tom Williams</div>
+<div class="review-role">Owner, ComfortAir HVAC</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"Our law firm was missing calls after hours. Now 'Grace' answers every call, qualifies leads, and books consultations. We've added $180K in new cases."</div>
+<div class="review-author">
+<div class="review-avatar">JP</div>
+<div class="review-info">
+<div class="review-name">Jennifer Park, Esq.</div>
+<div class="review-role">Partner, Park & Associates Law</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"The custom agent feature is incredible. We built an AI for our pool cleaning service in 5 minutes and it books 30+ appointments weekly."</div>
+<div class="review-author">
+<div class="review-avatar">CB</div>
+<div class="review-info">
+<div class="review-name">Chris Baker</div>
+<div class="review-role">Owner, Crystal Clear Pools</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"We were spending $4,500/month on a call center. Switched to VOICE and now we're booking more appointments at a fraction of the cost. ROI is insane."</div>
+<div class="review-author">
+<div class="review-avatar">AM</div>
+<div class="review-info">
+<div class="review-name">Amanda Martinez</div>
+<div class="review-role">VP Sales, Horizon Real Estate</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+<div class="review-card">
+<div class="review-stars">★★★★★</div>
+<div class="review-text">"My gym was losing leads because we couldn't answer the phone during classes. Now 'Alex' handles everything and membership sign-ups are up 85%."</div>
+<div class="review-author">
+<div class="review-avatar">KJ</div>
+<div class="review-info">
+<div class="review-name">Kevin Johnson</div>
+<div class="review-role">Owner, PowerFit Gym</div>
+<div class="review-verified">✓ Verified Customer</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
 <section class="pricing" id="pricing">
+<div class="pricing-inner">
 <div class="section-label">Pricing</div>
-<h2 class="section-title">Simple, transparent pricing</h2>
-<div class="pricing-cards">
-<div class="pricing-card">
-<div class="pricing-name">Starter</div>
-<div class="pricing-price">$97<span>/mo</span></div>
-<div class="pricing-desc">Perfect for small teams</div>
-<ul class="pricing-features">
-<li>3 AI Agents</li>
-<li>500 calls/month</li>
-<li>Basic integrations</li>
-<li>Email support</li>
-</ul>
-<button class="pricing-btn" onclick="location.href='/app'">Get Started</button>
+<h2 class="section-title">Enterprise-Grade AI for Your Business</h2>
+
+<div class="pricing-box">
+<div class="pricing-headline">Custom Solutions Starting at Scale</div>
+<div class="pricing-sub">Every business is unique. We build custom AI solutions tailored to your specific needs, industry, and call volume.</div>
+
+<div class="pricing-features-list">
+<div class="pricing-feature-item">Unlimited AI Agents</div>
+<div class="pricing-feature-item">Unlimited Calls</div>
+<div class="pricing-feature-item">Custom Voice & Scripts</div>
+<div class="pricing-feature-item">All Integrations</div>
+<div class="pricing-feature-item">Dedicated Success Manager</div>
+<div class="pricing-feature-item">White-Label Options</div>
+<div class="pricing-feature-item">Priority Support</div>
+<div class="pricing-feature-item">SLA Guarantee</div>
 </div>
-<div class="pricing-card featured">
-<div class="pricing-name">Professional</div>
-<div class="pricing-price">$297<span>/mo</span></div>
-<div class="pricing-desc">Most popular for growing businesses</div>
-<ul class="pricing-features">
-<li>All 27 AI Agents</li>
-<li>Unlimited calls</li>
-<li>All integrations</li>
-<li>Priority support</li>
-<li>Custom agent training</li>
-</ul>
-<button class="pricing-btn" onclick="location.href='/app'">Start Free Trial</button>
-</div>
-<div class="pricing-card">
-<div class="pricing-name">Enterprise</div>
-<div class="pricing-price">Custom</div>
-<div class="pricing-desc">For large organizations</div>
-<ul class="pricing-features">
-<li>Unlimited everything</li>
-<li>Custom AI agents</li>
-<li>Dedicated account manager</li>
-<li>SLA guarantee</li>
-<li>On-premise option</li>
-</ul>
-<button class="pricing-btn">Contact Sales</button>
+
+<a href="#demo" class="pricing-cta-btn">📞 Request Custom Quote</a>
+<p class="pricing-note">Free demo included • No commitment required • Setup in 24 hours</p>
 </div>
 </div>
 </section>
@@ -2871,6 +3586,97 @@ document.getElementById('demo-phone').addEventListener('input', function(e) {
         }
     }
 });
+
+// Custom Agent Creator
+let creatorType = 'outbound';
+
+function switchCreatorTab(type) {
+    creatorType = type;
+    document.querySelectorAll('.creator-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('creator-tab-' + type).classList.add('active');
+}
+
+// Format creator phone as user types
+document.getElementById('creator-phone').addEventListener('input', function(e) {
+    let digits = e.target.value.replace(/\\D/g, '');
+    if (digits.length > 0) {
+        if (digits.length <= 3) {
+            e.target.value = '(' + digits;
+        } else if (digits.length <= 6) {
+            e.target.value = '(' + digits.slice(0,3) + ') ' + digits.slice(3);
+        } else {
+            e.target.value = '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6,10);
+        }
+    }
+});
+
+async function createCustomAgent() {
+    const phone = document.getElementById('creator-phone').value.trim();
+    const company = document.getElementById('creator-company').value.trim();
+    const industry = document.getElementById('creator-industry').value.trim();
+    const agentName = document.getElementById('creator-agent-name').value.trim();
+    const services = document.getElementById('creator-services').value.trim();
+    
+    if (!phone) {
+        showLandingToast('Please enter your phone number', true);
+        return;
+    }
+    if (!company) {
+        showLandingToast('Please enter your company name', true);
+        return;
+    }
+    if (!industry) {
+        showLandingToast('Please enter your industry', true);
+        return;
+    }
+    if (!agentName) {
+        showLandingToast('Please enter an agent name', true);
+        return;
+    }
+    
+    const btn = document.querySelector('.creator-btn');
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<span>🚀</span><span>Creating your agent...</span>';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    
+    try {
+        const response = await fetch('/api/custom-agent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                phone: formatPhoneNumber(phone),
+                company: company,
+                industry: industry,
+                agent_name: agentName,
+                services: services,
+                agent_type: creatorType
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showLandingToast('📞 Your custom ' + agentName + ' is calling you now!', false);
+            btn.innerHTML = '<span>✅</span><span>Call initiated!</span>';
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }, 5000);
+        } else {
+            showLandingToast(result.error || 'Failed to create agent', true);
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    } catch (error) {
+        showLandingToast('Connection error. Please try again.', true);
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    }
+}
 </script>
 
 </body>
@@ -3456,6 +4262,105 @@ class Handler(BaseHTTPRequestHandler):
                 # Make the call using the existing make_call function
                 result = make_call(phone, name="there", agent_type=agent_type, is_test=False)
                 self.send_json(result)
+        # Custom agent creator from landing page
+        elif path == '/api/custom-agent':
+            phone = d.get('phone', '')
+            company = d.get('company', '')
+            industry = d.get('industry', '')
+            agent_name = d.get('agent_name', '')
+            services = d.get('services', '')
+            agent_type = d.get('agent_type', 'outbound')
+            
+            if not phone:
+                self.send_json({"success": False, "error": "Phone number required"})
+            elif not company or not industry or not agent_name:
+                self.send_json({"success": False, "error": "Please fill in all required fields"})
+            elif not VAPI_API_KEY:
+                self.send_json({"success": False, "error": "VAPI not configured"})
+            else:
+                # Build custom agent based on type
+                if agent_type == 'inbound':
+                    first_msg = f"Thank you for calling {company}, this is {agent_name}, how can I help you today?"
+                    prompt = f"""You are {agent_name}, the friendly and professional receptionist at {company}.
+
+You are warm, helpful, and sound EXACTLY like a real human - not robotic or scripted.
+
+GREETING: "Thank you for calling {company}, this is {agent_name}, how can I help you today?"
+
+CORE BEHAVIORS:
+1. LISTEN FIRST - Let them fully explain why they're calling
+2. ACKNOWLEDGE - "I completely understand" / "I can definitely help with that"
+3. GATHER INFO - Get their name, phone, and what they need
+4. BOOK APPOINTMENT - "I'd be happy to get you scheduled!"
+
+INDUSTRY: {industry}
+SERVICES: {services if services else 'General services'}
+
+APPOINTMENT BOOKING:
+- "I'd be happy to get you scheduled! Let me check what we have available..."
+- "I have tomorrow at 10 or Thursday at 2... which works better for you?"
+- "Perfect! And can I get your name and the best number to reach you?"
+
+CLOSING:
+- "Is there anything else I can help you with today?"
+- "Thank you so much for calling {company}! Have a wonderful day!"
+
+Be warm, professional, and always try to book an appointment."""
+                    voice_config = {"provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM"}
+                else:
+                    first_msg = f"Hi... it's just {agent_name} here... how you doing today?"
+                    prompt = f"""You are {agent_name}, a warm and natural appointment setter for {company}. You sound EXACTLY like a real person having a casual conversation - NOT like a salesperson or robot.
+
+CRITICAL VOICE RULES:
+- Speak slowly and naturally with pauses "..."
+- Use casual fillers: "yeah", "so", "um", "gotcha", "right", "cool"
+- Sound genuinely curious, never pushy
+- Wait for them to respond before continuing
+
+INDUSTRY: {industry}
+SERVICES: {services if services else 'General services'}
+
+CONVERSATION FLOW:
+
+1. OPENER: "Hi... it's just {agent_name} here... how you doing today?" [WAIT]
+
+2. TRANSITION: "Good good... so hey, I'm not sure if we can help you out or not... but you reached out about {industry.lower()} services right?" [WAIT]
+
+3. PERMISSION: "Cool... I just have like 2 quick questions to see if we can even help... then I'll get out of your hair... sound fair?" [WAIT]
+
+4. QUALIFICATION: Ask about their situation, what they need, timeline
+
+5. CLOSE: "I've got two spots open this week... tomorrow at 10 in the morning or Thursday around 2... which one works better for you?"
+
+NEVER: Sound scripted, talk fast, skip waiting for response, end without booking."""
+                    voice_config = {"provider": "vapi", "voiceId": "Paige"}
+                
+                # Make the custom call
+                call_data = {
+                    "phoneNumberId": VAPI_PHONE_ID,
+                    "customer": {"number": phone},
+                    "assistant": {
+                        "firstMessage": first_msg,
+                        "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": prompt}], "temperature": 0.8},
+                        "voice": voice_config,
+                        "silenceTimeoutSeconds": 45,
+                        "responseDelaySeconds": 1.2,
+                        "backgroundSound": "office"
+                    }
+                }
+                
+                try:
+                    response = requests.post("https://api.vapi.ai/call/phone",
+                        headers={"Authorization": f"Bearer {VAPI_API_KEY}", "Content-Type": "application/json"},
+                        json=call_data, timeout=15)
+                    
+                    if response.status_code in [200, 201]:
+                        result = response.json()
+                        self.send_json({"success": True, "call_id": result.get('id', '')})
+                    else:
+                        self.send_json({"success": False, "error": "Failed to initiate call"})
+                except Exception as e:
+                    self.send_json({"success": False, "error": str(e)})
         else:
             self.send_error(404)
     def do_OPTIONS(self):

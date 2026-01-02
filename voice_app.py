@@ -1316,6 +1316,43 @@ def init_db():
         FOREIGN KEY (user_id) REFERENCES users(id)
     )''')
     
+    # Website Leads - people who book through the website
+    c.execute('''CREATE TABLE IF NOT EXISTS website_leads (
+        id INTEGER PRIMARY KEY,
+        first_name TEXT,
+        last_name TEXT,
+        email TEXT,
+        phone TEXT,
+        company TEXT,
+        industry TEXT,
+        call_volume TEXT,
+        preferred_day TEXT,
+        preferred_time TEXT,
+        notes TEXT,
+        source TEXT DEFAULT 'website_booking',
+        status TEXT DEFAULT 'new',
+        assigned_to TEXT,
+        follow_up_date TEXT,
+        last_contact_date TIMESTAMP,
+        total_contacts INTEGER DEFAULT 0,
+        converted INTEGER DEFAULT 0,
+        deal_value REAL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    
+    # Website Visits - tracking page views and actions
+    c.execute('''CREATE TABLE IF NOT EXISTS website_visits (
+        id INTEGER PRIMARY KEY,
+        visitor_id TEXT,
+        action TEXT,
+        page TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        referrer TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    
     # Create default admin user (password: admin123 - CHANGE IN PRODUCTION!)
     admin_salt = secrets.token_hex(16)
     admin_hash = hashlib.sha256(('admin123' + admin_salt).encode()).hexdigest()
@@ -2940,6 +2977,35 @@ a{color:inherit;text-decoration:none}
 .creator-btn:hover{transform:translateY(-3px);box-shadow:0 20px 60px rgba(16,185,129,0.4)}
 .creator-note{font-size:13px;color:var(--gray-500);margin-top:16px;text-align:center}
 
+/* Booking Modal */
+.booking-modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(8px);z-index:10000;display:none;align-items:center;justify-content:center}
+.booking-modal-bg.show{display:flex}
+.booking-modal{background:var(--gray-900);border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:40px;max-width:500px;width:90%;max-height:90vh;overflow-y:auto;position:relative}
+.booking-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--gray-400);font-size:24px;cursor:pointer;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.booking-close:hover{background:rgba(255,255,255,0.1);color:var(--white)}
+.booking-header{text-align:center;margin-bottom:32px}
+.booking-icon{font-size:48px;margin-bottom:16px}
+.booking-title{font-size:24px;font-weight:700;margin-bottom:8px}
+.booking-sub{color:var(--gray-400);font-size:14px}
+.booking-form{display:flex;flex-direction:column;gap:16px}
+.booking-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.booking-field{text-align:left}
+.booking-field label{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:var(--gray-400)}
+.booking-field input,.booking-field select,.booking-field textarea{width:100%;padding:14px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;background:rgba(0,0,0,0.3);color:var(--white);font-size:15px;font-family:inherit;transition:all .2s}
+.booking-field input:focus,.booking-field select:focus,.booking-field textarea:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 20px rgba(0,209,255,0.2)}
+.booking-field input::placeholder,.booking-field textarea::placeholder{color:var(--gray-600)}
+.booking-field select{cursor:pointer}
+.booking-field select option{background:var(--black)}
+.booking-field textarea{min-height:80px;resize:vertical}
+.booking-times{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.booking-time{padding:12px 8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:transparent;color:var(--gray-400);font-size:13px;cursor:pointer;transition:all .2s;text-align:center}
+.booking-time:hover{border-color:var(--cyan);color:var(--white)}
+.booking-time.selected{background:var(--cyan);color:var(--black);border-color:var(--cyan);font-weight:600}
+.booking-submit{width:100%;padding:18px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--cyan) 0%,#00a8cc 100%);color:var(--black);font-size:16px;font-weight:700;cursor:pointer;transition:all .2s;margin-top:8px}
+.booking-submit:hover{transform:translateY(-2px);box-shadow:0 15px 40px rgba(0,209,255,0.4)}
+.booking-submit:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.booking-privacy{font-size:11px;color:var(--gray-500);text-align:center;margin-top:12px}
+
 /* As Seen On */
 .seen-on{padding:80px 40px;border-top:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05)}
 .seen-on-inner{max-width:1200px;margin:0 auto;text-align:center}
@@ -3452,7 +3518,7 @@ VOICE
 <div class="pricing-feature-item">SLA Guarantee</div>
 </div>
 
-<a href="#demo" class="pricing-cta-btn">📞 Request Custom Quote</a>
+<a href="#" onclick="openBookingModal(); return false;" class="pricing-cta-btn">📞 Request Custom Quote</a>
 <p class="pricing-note">Free demo included • No commitment required • Setup in 24 hours</p>
 </div>
 </div>
@@ -3461,7 +3527,7 @@ VOICE
 <section class="cta">
 <h2>Ready to close more deals?</h2>
 <p>Join hundreds of businesses automating their sales with VOICE AI.</p>
-<a href="/app" class="btn-primary">Launch VOICE Free →</a>
+<a href="#" onclick="openBookingModal(); return false;" class="btn-primary">Book a Demo Call →</a>
 </section>
 
 <footer class="footer">
@@ -3477,6 +3543,111 @@ VOICE
 </div>
 <div class="footer-copy">© 2025 VOICE AI. All rights reserved.</div>
 </footer>
+
+<!-- Booking Modal -->
+<div class="booking-modal-bg" id="booking-modal">
+<div class="booking-modal">
+<button class="booking-close" onclick="closeBookingModal()">×</button>
+<div class="booking-header">
+<div class="booking-icon">📅</div>
+<div class="booking-title">Book Your Strategy Call</div>
+<div class="booking-sub">Schedule a free 15-minute call to discuss how VOICE can transform your business</div>
+</div>
+
+<div class="booking-form">
+<div class="booking-row">
+<div class="booking-field">
+<label>First Name *</label>
+<input type="text" id="book-fname" placeholder="John" required>
+</div>
+<div class="booking-field">
+<label>Last Name *</label>
+<input type="text" id="book-lname" placeholder="Smith" required>
+</div>
+</div>
+
+<div class="booking-field">
+<label>Email *</label>
+<input type="email" id="book-email" placeholder="john@company.com" required>
+</div>
+
+<div class="booking-field">
+<label>Phone Number *</label>
+<input type="tel" id="book-phone" placeholder="(555) 123-4567" required>
+</div>
+
+<div class="booking-field">
+<label>Company Name</label>
+<input type="text" id="book-company" placeholder="Your Company">
+</div>
+
+<div class="booking-row">
+<div class="booking-field">
+<label>Industry *</label>
+<select id="book-industry">
+<option value="">Select Industry</option>
+<option value="Roofing">Roofing</option>
+<option value="Solar">Solar</option>
+<option value="HVAC">HVAC</option>
+<option value="Plumbing">Plumbing</option>
+<option value="Electrical">Electrical</option>
+<option value="Dental">Dental</option>
+<option value="Medical">Medical</option>
+<option value="Legal">Legal</option>
+<option value="Real Estate">Real Estate</option>
+<option value="Insurance">Insurance</option>
+<option value="Auto Sales">Auto Sales</option>
+<option value="Fitness">Fitness</option>
+<option value="Home Services">Home Services</option>
+<option value="Other">Other</option>
+</select>
+</div>
+<div class="booking-field">
+<label>Monthly Call Volume</label>
+<select id="book-volume">
+<option value="">Select Volume</option>
+<option value="Under 500">Under 500 calls</option>
+<option value="500-2000">500 - 2,000 calls</option>
+<option value="2000-5000">2,000 - 5,000 calls</option>
+<option value="5000-10000">5,000 - 10,000 calls</option>
+<option value="10000+">10,000+ calls</option>
+</select>
+</div>
+</div>
+
+<div class="booking-field">
+<label>Preferred Day *</label>
+<div class="booking-times" id="booking-days">
+<button type="button" class="booking-time" data-day="Monday">Mon</button>
+<button type="button" class="booking-time" data-day="Tuesday">Tue</button>
+<button type="button" class="booking-time" data-day="Wednesday">Wed</button>
+<button type="button" class="booking-time" data-day="Thursday">Thu</button>
+<button type="button" class="booking-time" data-day="Friday">Fri</button>
+</div>
+</div>
+
+<div class="booking-field">
+<label>Preferred Time *</label>
+<div class="booking-times" id="booking-times">
+<button type="button" class="booking-time" data-time="9:00 AM">9 AM</button>
+<button type="button" class="booking-time" data-time="10:00 AM">10 AM</button>
+<button type="button" class="booking-time" data-time="11:00 AM">11 AM</button>
+<button type="button" class="booking-time" data-time="1:00 PM">1 PM</button>
+<button type="button" class="booking-time" data-time="2:00 PM">2 PM</button>
+<button type="button" class="booking-time" data-time="3:00 PM">3 PM</button>
+</div>
+</div>
+
+<div class="booking-field">
+<label>Anything specific you'd like to discuss?</label>
+<textarea id="book-notes" placeholder="Tell us about your current challenges or goals..."></textarea>
+</div>
+
+<button class="booking-submit" onclick="submitBooking()">🚀 Book My Strategy Call</button>
+<p class="booking-privacy">🔒 Your information is secure and will never be shared</p>
+</div>
+</div>
+</div>
 
 <div class="landing-toast" id="landing-toast"></div>
 
@@ -3677,6 +3848,164 @@ async function createCustomAgent() {
         btn.style.opacity = '1';
     }
 }
+
+// Booking Modal Functions
+let selectedDay = '';
+let selectedTime = '';
+
+function openBookingModal() {
+    document.getElementById('booking-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+    // Track page view
+    trackWebsiteVisit('booking_modal_opened');
+}
+
+function closeBookingModal() {
+    document.getElementById('booking-modal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+// Day selection
+document.querySelectorAll('#booking-days .booking-time').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('#booking-days .booking-time').forEach(b => b.classList.remove('selected'));
+        this.classList.add('selected');
+        selectedDay = this.dataset.day;
+    });
+});
+
+// Time selection
+document.querySelectorAll('#booking-times .booking-time').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('#booking-times .booking-time').forEach(b => b.classList.remove('selected'));
+        this.classList.add('selected');
+        selectedTime = this.dataset.time;
+    });
+});
+
+// Format booking phone
+document.getElementById('book-phone').addEventListener('input', function(e) {
+    let digits = e.target.value.replace(/\\D/g, '');
+    if (digits.length > 0) {
+        if (digits.length <= 3) {
+            e.target.value = '(' + digits;
+        } else if (digits.length <= 6) {
+            e.target.value = '(' + digits.slice(0,3) + ') ' + digits.slice(3);
+        } else {
+            e.target.value = '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6,10);
+        }
+    }
+});
+
+async function submitBooking() {
+    const fname = document.getElementById('book-fname').value.trim();
+    const lname = document.getElementById('book-lname').value.trim();
+    const email = document.getElementById('book-email').value.trim();
+    const phone = document.getElementById('book-phone').value.trim();
+    const company = document.getElementById('book-company').value.trim();
+    const industry = document.getElementById('book-industry').value;
+    const volume = document.getElementById('book-volume').value;
+    const notes = document.getElementById('book-notes').value.trim();
+    
+    // Validation
+    if (!fname || !lname) {
+        showLandingToast('Please enter your name', true);
+        return;
+    }
+    if (!email || !email.includes('@')) {
+        showLandingToast('Please enter a valid email', true);
+        return;
+    }
+    if (!phone || phone.replace(/\\D/g, '').length < 10) {
+        showLandingToast('Please enter a valid phone number', true);
+        return;
+    }
+    if (!industry) {
+        showLandingToast('Please select your industry', true);
+        return;
+    }
+    if (!selectedDay) {
+        showLandingToast('Please select a preferred day', true);
+        return;
+    }
+    if (!selectedTime) {
+        showLandingToast('Please select a preferred time', true);
+        return;
+    }
+    
+    const btn = document.querySelector('.booking-submit');
+    const originalText = btn.textContent;
+    btn.textContent = 'Booking...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/website-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                first_name: fname,
+                last_name: lname,
+                email: email,
+                phone: formatPhoneNumber(phone),
+                company: company,
+                industry: industry,
+                call_volume: volume,
+                preferred_day: selectedDay,
+                preferred_time: selectedTime,
+                notes: notes,
+                source: 'website_booking'
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showLandingToast('🎉 Booked! We\\'ll call you ' + selectedDay + ' at ' + selectedTime, false);
+            closeBookingModal();
+            // Reset form
+            document.getElementById('book-fname').value = '';
+            document.getElementById('book-lname').value = '';
+            document.getElementById('book-email').value = '';
+            document.getElementById('book-phone').value = '';
+            document.getElementById('book-company').value = '';
+            document.getElementById('book-industry').value = '';
+            document.getElementById('book-volume').value = '';
+            document.getElementById('book-notes').value = '';
+            selectedDay = '';
+            selectedTime = '';
+            document.querySelectorAll('.booking-time').forEach(b => b.classList.remove('selected'));
+        } else {
+            showLandingToast(result.error || 'Something went wrong', true);
+        }
+    } catch (error) {
+        showLandingToast('Connection error. Please try again.', true);
+    }
+    
+    btn.textContent = originalText;
+    btn.disabled = false;
+}
+
+// Track website visits
+function trackWebsiteVisit(action) {
+    fetch('/api/track-visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: action, page: window.location.pathname, timestamp: new Date().toISOString() })
+    }).catch(() => {});
+}
+
+// Track on page load
+trackWebsiteVisit('page_view');
+
+// Close modal on background click
+document.getElementById('booking-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeBookingModal();
+});
+
+// Close on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeBookingModal();
+});
 </script>
 
 </body>
@@ -3800,7 +4129,7 @@ if($('test-phone'))$('test-phone').value=testPhone;
 if($('app-mode'))$('app-mode').value=settings.mode||'testing';
 }init();
 document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));n.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));$('page-'+n.dataset.page).classList.add('active');load(n.dataset.page)});
-function load(p){if(p==='dashboard')loadDash();else if(p==='calendar')loadCal();else if(p==='appointments')loadAppts();else if(p==='dispositions')loadDispo();else if(p==='outbound')loadOut();else if(p==='inbound')loadIn();else if(p==='leads')loadLeads();else if(p==='calls')loadCalls();else if(p==='costs')loadCosts();else if(p==='testing')loadTesting();else if(p==='ads')loadAds();else if(p==='pipeline')loadPipeline();else if(p==='integrations')loadIntegrations();else if(p==='account')loadAccount()}
+function load(p){if(p==='dashboard')loadDash();else if(p==='calendar')loadCal();else if(p==='appointments')loadAppts();else if(p==='dispositions')loadDispo();else if(p==='outbound')loadOut();else if(p==='inbound')loadIn();else if(p==='leads')loadLeads();else if(p==='website-leads')loadWebsiteLeads();else if(p==='calls')loadCalls();else if(p==='costs')loadCosts();else if(p==='testing')loadTesting();else if(p==='ads')loadAds();else if(p==='pipeline')loadPipeline();else if(p==='integrations')loadIntegrations();else if(p==='account')loadAccount()}
 function openModal(id){$(id).classList.add('active')}function closeModal(id){$(id).classList.remove('active')}function toast(msg,err=false){$('toast').textContent=msg;$('toast').className='toast show'+(err?' error':'');setTimeout(()=>$('toast').classList.remove('show'),3000)}
 function apptCard(a){const g=agents[a.agent_type]||{name:'Agent'};return `<div class="appt-card"><div class="appt-header"><div><div class="appt-name">${a.first_name||'Customer'}</div><div class="appt-phone">${a.phone||''}</div></div><span class="status status-${a.disposition||'scheduled'}">${a.disposition||'Scheduled'}</span></div><div class="appt-meta"><span>${a.appointment_date||'TBD'}</span><span>${a.appointment_time||''}</span><span>${g.name}</span></div><div class="appt-actions">${!a.disposition?`<button class="btn btn-sm btn-success" onclick="qDispo(${a.id},'sold')">Sold</button><button class="btn btn-sm btn-danger" onclick="qDispo(${a.id},'no-show')">No Show</button>`:''}<button class="btn btn-sm btn-secondary" onclick="editAppt(${a.id})">Edit</button></div></div>`}
 async function loadDash(){const s=await fetch('/api/appointment-stats').then(r=>r.json());$('s-today').textContent=s.today||0;$('s-scheduled').textContent=s.scheduled||0;$('s-sold').textContent=s.sold||0;$('s-revenue').textContent='$'+(s.revenue||0).toLocaleString();const today=new Date().toISOString().split('T')[0];const a=await fetch('/api/appointments?date='+today).then(r=>r.json());$('today-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments today</p>'}
@@ -3819,6 +4148,35 @@ function openTestModal(agentType){$('test-agent-type').value=agentType;$('test-m
 async function runTest(isLive){const agent=$('test-agent-type').value;const phone=$('test-phone-input').value||testPhone;if(!phone){toast('Enter a phone number',true);return}closeModal('test-modal');toast('Calling '+phone+'...');const r=await fetch('/api/test-agent-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_type:agent,phone:phone,is_live:isLive})}).then(r=>r.json());if(r.success)toast('Call initiated!');else toast('Error: '+r.error,true)}
 async function testAgent(t){openTestModal(t)}
 async function loadLeads(){const l=await fetch('/api/leads').then(r=>r.json());$('leads-tb').innerHTML=l.map(x=>`<tr><td>${x.first_name||'Unknown'}</td><td>${x.phone}</td><td>${agents[x.agent_type]?.name||'?'}</td><td><span class="status status-${x.pipeline_stage||x.status}">${x.pipeline_stage||x.status}</span></td></tr>`).join('')}
+async function loadWebsiteLeads(){
+const leads=await fetch('/api/website-leads').then(r=>r.json()).catch(()=>[]);
+const stats=await fetch('/api/website-stats').then(r=>r.json()).catch(()=>({total_leads:0,new_leads:0,converted:0,today_visits:0}));
+$('wl-total').textContent=stats.total_leads;
+$('wl-new').textContent=stats.new_leads;
+$('wl-converted').textContent=stats.converted;
+$('wl-visits').textContent=stats.today_visits;
+$('website-leads-tb').innerHTML=leads.length?leads.map(l=>`<tr>
+<td style="font-size:12px">${new Date(l.created_at).toLocaleDateString()}</td>
+<td><strong>${l.first_name||''} ${l.last_name||''}</strong></td>
+<td><a href="mailto:${l.email}" style="color:var(--cyan)">${l.email||'-'}</a></td>
+<td><a href="tel:${l.phone}" style="color:var(--cyan)">${l.phone||'-'}</a></td>
+<td>${l.company||'-'}</td>
+<td>${l.industry||'-'}</td>
+<td>${l.preferred_day||''} ${l.preferred_time||''}</td>
+<td><span class="status status-${l.status==='new'?'scheduled':l.status==='contacted'?'cyan':l.converted?'sold':'pending'}">${l.status}</span></td>
+<td><button class="btn btn-sm btn-primary" onclick="callWebsiteLead('${l.phone}','${l.first_name}')">📞 Call</button> <button class="btn btn-sm btn-secondary" onclick="updateWebsiteLeadStatus(${l.id},'contacted')">✓</button></td>
+</tr>`).join(''):'<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--gray-500)">No website leads yet. Share voicelab.live to start collecting leads!</td></tr>';
+}
+async function callWebsiteLead(phone,name){
+if(!phone){toast('No phone number',true);return}
+toast('Calling '+name+'...');
+await fetch('/api/test-agent-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_type:'roofing',phone:phone,is_live:true})});
+}
+async function updateWebsiteLeadStatus(id,status){
+await fetch('/api/website-lead-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,status:status})});
+toast('Status updated');
+loadWebsiteLeads();
+}
 async function loadCalls(){const c=await fetch('/api/calls').then(r=>r.json());$('calls-tb').innerHTML=c.map(x=>`<tr><td style="font-size:12px">${new Date(x.created_at).toLocaleString()}</td><td>${x.phone}</td><td>${agents[x.agent_type]?.name||'?'}</td><td>${x.is_inbound?'Inbound':'Outbound'}</td><td><span class="status ${x.is_live?'status-sold':'status-scheduled'}">${x.is_live?'Live':'Test'}</span></td></tr>`).join('')}
 async function loadCosts(){const c=await fetch('/api/live-costs').then(r=>r.json());$('c-today').textContent='$'+c.today.total.toFixed(2);$('c-month').textContent='$'+c.month.total.toFixed(2);$('c-calls').textContent=c.today.calls;$('c-sms').textContent='$'+c.today.sms.toFixed(3)}
 async function saveLead(){const p=$('l-phone').value;if(!p){toast('Phone required',true);return}await fetch('/api/start-cycle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:p,name:$('l-name').value||'there',agent_type:$('l-agent').value})});closeModal('lead-modal');toast('Lead cycle started');loadDash()}
@@ -3946,6 +4304,7 @@ loadDash();"""
 <div class="nav-section">Marketing</div>
 <div class="nav-item" data-page="ads">📱 FB/IG Ads</div>
 <div class="nav-item" data-page="leads">👥 Leads</div>
+<div class="nav-item" data-page="website-leads">🌐 Website Leads</div>
 <div class="nav-section">Data</div>
 <div class="nav-item" data-page="calls">📞 Calls</div>
 <div class="nav-item" data-page="costs">💰 Costs</div>
@@ -3973,6 +4332,17 @@ loadDash();"""
 <div class="stats-grid"><div class="stat cyan"><div class="stat-value" id="ld-total">0</div><div class="stat-label">Total Leads</div></div><div class="stat green"><div class="stat-value" id="ld-contacted">0</div><div class="stat-label">Contacted</div></div><div class="stat orange"><div class="stat-value" id="ld-appts">0</div><div class="stat-label">Appointments</div></div><div class="stat"><div class="stat-value" id="ld-rate">0%</div><div class="stat-label">Answer Rate</div></div></div>
 <div class="card"><div class="card-header"><h2>All Leads</h2><div style="display:flex;gap:8px"><select id="lead-filter" onchange="loadLeads()" style="padding:6px 10px;border-radius:4px;background:var(--gray-900);border:1px solid var(--gray-800);color:var(--white);font-size:12px"><option value="all">All Stages</option><option value="new_lead">🆕 New</option><option value="contacted">📞 Contacted</option><option value="no_answer">📵 No Answer</option><option value="appointment_set">📅 Appt Set</option><option value="sold">💰 Sold</option></select></div></div>
 <div style="overflow-x:auto"><table><thead><tr><th>Lead</th><th>Phone</th><th>Source</th><th>Calls</th><th>Last Outcome</th><th>Stage</th><th>Actions</th></tr></thead><tbody id="leads-tb"></tbody></table></div></div>
+</div>
+<div class="page" id="page-website-leads">
+<div class="header"><div><h1>🌐 Website Leads</h1><div class="header-sub">Track visitors who book through voicelab.live</div></div></div>
+<div class="stats-grid">
+<div class="stat cyan"><div class="stat-value" id="wl-total">0</div><div class="stat-label">Total Leads</div></div>
+<div class="stat green"><div class="stat-value" id="wl-new">0</div><div class="stat-label">New</div></div>
+<div class="stat orange"><div class="stat-value" id="wl-converted">0</div><div class="stat-label">Converted</div></div>
+<div class="stat"><div class="stat-value" id="wl-visits">0</div><div class="stat-label">Today's Visits</div></div>
+</div>
+<div class="card"><div class="card-header"><h2>📋 All Website Leads</h2><button class="btn btn-sm btn-secondary" onclick="loadWebsiteLeads()">🔄 Refresh</button></div>
+<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Industry</th><th>Preferred Time</th><th>Status</th><th>Actions</th></tr></thead><tbody id="website-leads-tb"></tbody></table></div></div>
 </div>
 <div class="page" id="page-calls"><div class="header"><h1>📞 Calls</h1></div>
 <div class="stats-grid"><div class="stat"><div class="stat-value" id="call-total">0</div><div class="stat-label">Total Calls</div></div><div class="stat green"><div class="stat-value" id="call-answered">0</div><div class="stat-label">Answered</div></div><div class="stat orange"><div class="stat-value" id="call-noanswer">0</div><div class="stat-label">No Answer</div></div><div class="stat cyan"><div class="stat-value" id="call-appts">0</div><div class="stat-label">Appts Booked</div></div></div>
@@ -4193,6 +4563,35 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(get_user_by_id(1) or {})  # TODO: Get from session
         elif path == '/api/api-keys':
             self.send_json([])  # TODO: Implement get_api_keys
+        elif path == '/api/website-leads':
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute('SELECT * FROM website_leads ORDER BY created_at DESC')
+            leads = [dict(row) for row in c.fetchall()]
+            conn.close()
+            self.send_json(leads)
+        elif path == '/api/website-stats':
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('SELECT COUNT(*) FROM website_leads')
+            total_leads = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM website_leads WHERE status = 'new'")
+            new_leads = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM website_leads WHERE converted = 1")
+            converted = c.fetchone()[0]
+            c.execute('SELECT COUNT(*) FROM website_visits WHERE action = "page_view" AND DATE(created_at) = DATE("now")')
+            today_visits = c.fetchone()[0]
+            c.execute('SELECT COUNT(*) FROM website_visits WHERE action = "page_view"')
+            total_visits = c.fetchone()[0]
+            conn.close()
+            self.send_json({
+                "total_leads": total_leads,
+                "new_leads": new_leads,
+                "converted": converted,
+                "today_visits": today_visits,
+                "total_visits": total_visits
+            })
         else:
             self.send_error(404)
     def do_POST(self):
@@ -4361,6 +4760,54 @@ NEVER: Sound scripted, talk fast, skip waiting for response, end without booking
                         self.send_json({"success": False, "error": "Failed to initiate call"})
                 except Exception as e:
                     self.send_json({"success": False, "error": str(e)})
+        # Website Lead Booking
+        elif path == '/api/website-lead':
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                c.execute('''INSERT INTO website_leads 
+                    (first_name, last_name, email, phone, company, industry, call_volume, 
+                     preferred_day, preferred_time, notes, source, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (d.get('first_name', ''), d.get('last_name', ''), d.get('email', ''),
+                     d.get('phone', ''), d.get('company', ''), d.get('industry', ''),
+                     d.get('call_volume', ''), d.get('preferred_day', ''), d.get('preferred_time', ''),
+                     d.get('notes', ''), d.get('source', 'website_booking'), 'new'))
+                lead_id = c.lastrowid
+                conn.commit()
+                conn.close()
+                print(f"🎯 New website lead: {d.get('first_name', '')} {d.get('last_name', '')} - {d.get('phone', '')} - {d.get('industry', '')}")
+                self.send_json({"success": True, "lead_id": lead_id})
+            except Exception as e:
+                print(f"❌ Error saving website lead: {e}")
+                self.send_json({"success": False, "error": str(e)})
+        # Track website visits
+        elif path == '/api/track-visit':
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                visitor_id = self.headers.get('X-Forwarded-For', '').split(',')[0].strip() or 'unknown'
+                c.execute('''INSERT INTO website_visits (visitor_id, action, page, ip_address, user_agent)
+                    VALUES (?, ?, ?, ?, ?)''',
+                    (visitor_id, d.get('action', 'page_view'), d.get('page', '/'),
+                     visitor_id, self.headers.get('User-Agent', '')))
+                conn.commit()
+                conn.close()
+                self.send_json({"success": True})
+            except:
+                self.send_json({"success": True})  # Don't fail on tracking errors
+        # Update website lead status
+        elif path == '/api/website-lead-status':
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                c.execute('UPDATE website_leads SET status = ?, last_contact_date = CURRENT_TIMESTAMP, total_contacts = total_contacts + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    (d.get('status', 'contacted'), d.get('id')))
+                conn.commit()
+                conn.close()
+                self.send_json({"success": True})
+            except Exception as e:
+                self.send_json({"success": False, "error": str(e)})
         else:
             self.send_error(404)
     def do_OPTIONS(self):

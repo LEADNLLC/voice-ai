@@ -1200,13 +1200,19 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
     
     print(f"📞 Calling {phone} with {agent.get('name', 'Agent')}...")
     
+    # Inbound = 11Labs, Outbound = VAPI Paige
+    if agent_type.startswith('inbound_'):
+        voice_config = {"provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM"}
+    else:
+        voice_config = {"provider": "vapi", "voiceId": "Paige"}
+    
     call_data = {
         "phoneNumberId": VAPI_PHONE_ID,
         "customer": {"number": phone},
         "assistant": {
             "firstMessage": first_msg,
             "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": prompt}], "temperature": 0.8},
-            "voice": {"provider": "vapi", "voiceId": "Paige"},
+            "voice": voice_config,
             "silenceTimeoutSeconds": 45,
             "responseDelaySeconds": 1.2,
             "backgroundSound": "office"

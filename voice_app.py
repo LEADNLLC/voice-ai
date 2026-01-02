@@ -2539,21 +2539,21 @@ VOICE
 <option value="tax">📊 Diana - Tax</option>
 </optgroup>
 <optgroup label="📥 Inbound Reception" id="opt-inbound" style="display:none">
-<option value="medical_office">🏥 Sarah - Medical Office</option>
-<option value="dental_office">🦷 Emily - Dental Office</option>
-<option value="law_firm">⚖️ Grace - Law Firm</option>
-<option value="real_estate_office">🏡 Jennifer - Real Estate</option>
-<option value="auto_dealer">🚗 Mike - Auto Dealer</option>
-<option value="insurance_agency">🛡️ Amanda - Insurance</option>
-<option value="financial_advisor">💰 David - Financial</option>
-<option value="spa_salon">💅 Lisa - Spa & Salon</option>
-<option value="restaurant">🍽️ Maria - Restaurant</option>
-<option value="hotel">🏨 James - Hotel</option>
-<option value="gym">💪 Chris - Gym</option>
-<option value="veterinary">🐕 Ashley - Veterinary</option>
-<option value="therapy">🧠 Dr. Rachel - Therapy</option>
-<option value="tutoring">📚 Kevin - Tutoring</option>
-<option value="photography">📸 Nicole - Photography</option>
+<option value="inbound_medical">🏥 Sarah - Medical Office</option>
+<option value="inbound_dental">🦷 Emily - Dental Office</option>
+<option value="inbound_legal">⚖️ Grace - Law Firm</option>
+<option value="inbound_realestate">🏡 Jennifer - Real Estate</option>
+<option value="inbound_auto">🚗 Mike - Auto Dealer</option>
+<option value="inbound_insurance">🛡️ Amanda - Insurance</option>
+<option value="inbound_financial">💰 David - Financial</option>
+<option value="inbound_spa">💅 Lisa - Spa & Salon</option>
+<option value="inbound_restaurant">🍽️ Maria - Restaurant</option>
+<option value="inbound_hotel">🏨 James - Hotel</option>
+<option value="inbound_gym">💪 Chris - Gym</option>
+<option value="inbound_vet">🐕 Ashley - Veterinary</option>
+<option value="inbound_therapy">🧠 Dr. Rachel - Therapy</option>
+<option value="inbound_tutoring">📚 Kevin - Tutoring</option>
+<option value="inbound_photo">📸 Nicole - Photography</option>
 </optgroup>
 </select>
 </div>
@@ -2668,7 +2668,7 @@ function switchDemoTab(type) {
     } else {
         outbound.style.display = 'none';
         inbound.style.display = 'block';
-        select.value = 'medical_office';
+        select.value = 'inbound_medical';
     }
 }
 

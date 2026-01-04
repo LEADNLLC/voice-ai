@@ -1587,6 +1587,139 @@ def init_db():
     except:
         pass
     
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # TEAM CALENDARS & ROUND ROBIN
+    # ═══════════════════════════════════════════════════════════════════════════════
+    
+    # Team members (extends users with calendar-specific settings)
+    c.execute('''CREATE TABLE IF NOT EXISTS team_members (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER,
+        name TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        role TEXT DEFAULT 'sales_rep',
+        color TEXT DEFAULT '#14b8a6',
+        avatar_url TEXT,
+        is_active INTEGER DEFAULT 1,
+        accepts_new_leads INTEGER DEFAULT 1,
+        max_daily_appointments INTEGER DEFAULT 10,
+        working_hours_start TEXT DEFAULT '09:00',
+        working_hours_end TEXT DEFAULT '17:00',
+        working_days TEXT DEFAULT '1,2,3,4,5',
+        timezone TEXT DEFAULT 'America/Denver',
+        google_calendar_id TEXT,
+        outlook_calendar_id TEXT,
+        calendly_link TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )''')
+    
+    # Calendars (multiple calendars per account)
+    c.execute('''CREATE TABLE IF NOT EXISTS calendars (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        color TEXT DEFAULT '#14b8a6',
+        calendar_type TEXT DEFAULT 'personal',
+        owner_id INTEGER,
+        is_default INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        round_robin_enabled INTEGER DEFAULT 0,
+        round_robin_type TEXT DEFAULT 'equal',
+        booking_buffer_minutes INTEGER DEFAULT 15,
+        slot_duration_minutes INTEGER DEFAULT 30,
+        max_advance_days INTEGER DEFAULT 30,
+        min_notice_hours INTEGER DEFAULT 2,
+        google_calendar_id TEXT,
+        outlook_calendar_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (owner_id) REFERENCES users(id)
+    )''')
+    
+    # Calendar team assignments (which team members are on which calendar)
+    c.execute('''CREATE TABLE IF NOT EXISTS calendar_team (
+        id INTEGER PRIMARY KEY,
+        calendar_id INTEGER NOT NULL,
+        team_member_id INTEGER NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        weight INTEGER DEFAULT 1,
+        current_load INTEGER DEFAULT 0,
+        last_assigned TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (calendar_id) REFERENCES calendars(id),
+        FOREIGN KEY (team_member_id) REFERENCES team_members(id),
+        UNIQUE(calendar_id, team_member_id)
+    )''')
+    
+    # Round robin tracking
+    c.execute('''CREATE TABLE IF NOT EXISTS round_robin_log (
+        id INTEGER PRIMARY KEY,
+        calendar_id INTEGER NOT NULL,
+        team_member_id INTEGER NOT NULL,
+        appointment_id INTEGER,
+        lead_id INTEGER,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        assignment_reason TEXT,
+        FOREIGN KEY (calendar_id) REFERENCES calendars(id),
+        FOREIGN KEY (team_member_id) REFERENCES team_members(id)
+    )''')
+    
+    # Add calendar_id and assigned_to to appointments
+    try:
+        c.execute('ALTER TABLE appointments ADD COLUMN calendar_id INTEGER DEFAULT 1')
+    except:
+        pass
+    try:
+        c.execute('ALTER TABLE appointments ADD COLUMN assigned_to INTEGER')
+    except:
+        pass
+    
+    # Add lead_id to sms_conversations for linking
+    try:
+        c.execute('ALTER TABLE sms_conversations ADD COLUMN lead_id INTEGER')
+    except:
+        pass
+    
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # CLAUDE AI ASSISTANT CONFIG
+    # ═══════════════════════════════════════════════════════════════════════════════
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS claude_assistant_config (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER,
+        api_key TEXT,
+        model TEXT DEFAULT 'claude-sonnet-4-20250514',
+        is_enabled INTEGER DEFAULT 0,
+        system_prompt TEXT,
+        max_tokens INTEGER DEFAULT 4096,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS claude_chat_history (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        tokens_used INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )''')
+    
+    # Create default calendar if none exists
+    c.execute('SELECT COUNT(*) FROM calendars')
+    if c.fetchone()[0] == 0:
+        c.execute('''INSERT INTO calendars (name, description, is_default, round_robin_enabled)
+                     VALUES ('Main Calendar', 'Primary booking calendar', 1, 0)''')
+    
+    # Create default team member if none exists
+    c.execute('SELECT COUNT(*) FROM team_members')
+    if c.fetchone()[0] == 0:
+        c.execute('''INSERT INTO team_members (name, email, role)
+                     VALUES ('Admin', 'admin@voicelab.live', 'admin')''')
+    
     conn.commit()
     conn.close()
     print("✅ Database initialized")
@@ -5986,6 +6119,421 @@ document.addEventListener('DOMContentLoaded', loadClients);
 </html>'''
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# TEAM MEMBERS & CALENDARS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_team_members():
+    """Get all team members"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('SELECT * FROM team_members WHERE is_active = 1 ORDER BY name')
+        members = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return members
+    except Exception as e:
+        print(f"get_team_members error: {e}")
+        return []
+
+def create_team_member(data):
+    """Create a new team member"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''INSERT INTO team_members (name, email, phone, role, color, calendly_link)
+                     VALUES (?, ?, ?, ?, ?, ?)''',
+                  (data.get('name'), data.get('email'), data.get('phone'),
+                   data.get('role', 'sales_rep'), data.get('color', '#14b8a6'),
+                   data.get('calendly_link')))
+        member_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        return {"success": True, "id": member_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+def update_team_member(member_id, data):
+    """Update a team member"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        fields = []
+        values = []
+        for key in ['name', 'email', 'phone', 'role', 'color', 'is_active', 
+                    'accepts_new_leads', 'max_daily_appointments', 'calendly_link',
+                    'working_hours_start', 'working_hours_end', 'working_days']:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key])
+        if fields:
+            values.append(member_id)
+            c.execute(f"UPDATE team_members SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+        conn.close()
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_calendars():
+    """Get all calendars"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('SELECT * FROM calendars WHERE is_active = 1 ORDER BY is_default DESC, name')
+        calendars = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return calendars
+    except Exception as e:
+        print(f"get_calendars error: {e}")
+        return []
+
+def create_calendar(data):
+    """Create a new calendar"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''INSERT INTO calendars (name, description, color, calendar_type, 
+                     round_robin_enabled, round_robin_type, slot_duration_minutes)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                  (data.get('name'), data.get('description'), data.get('color', '#14b8a6'),
+                   data.get('calendar_type', 'team'), data.get('round_robin_enabled', 0),
+                   data.get('round_robin_type', 'equal'), data.get('slot_duration', 30)))
+        cal_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        return {"success": True, "id": cal_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_calendar_team(calendar_id):
+    """Get team members assigned to a calendar"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('''SELECT ct.*, tm.name, tm.email, tm.color, tm.calendly_link
+                     FROM calendar_team ct
+                     JOIN team_members tm ON ct.team_member_id = tm.id
+                     WHERE ct.calendar_id = ? AND ct.is_active = 1''', (calendar_id,))
+        team = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return team
+    except Exception as e:
+        return []
+
+def assign_to_calendar(calendar_id, team_member_id, weight=1):
+    """Assign a team member to a calendar"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''INSERT OR REPLACE INTO calendar_team (calendar_id, team_member_id, weight)
+                     VALUES (?, ?, ?)''', (calendar_id, team_member_id, weight))
+        conn.commit()
+        conn.close()
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_next_round_robin(calendar_id):
+    """Get the next team member in round robin rotation"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        # Get calendar settings
+        c.execute('SELECT * FROM calendars WHERE id = ?', (calendar_id,))
+        cal = c.fetchone()
+        if not cal or not cal['round_robin_enabled']:
+            conn.close()
+            return None
+        
+        robin_type = cal['round_robin_type'] or 'equal'
+        
+        # Get active team members for this calendar
+        c.execute('''SELECT ct.*, tm.name, tm.max_daily_appointments
+                     FROM calendar_team ct
+                     JOIN team_members tm ON ct.team_member_id = tm.id
+                     WHERE ct.calendar_id = ? AND ct.is_active = 1 AND tm.is_active = 1
+                     AND tm.accepts_new_leads = 1
+                     ORDER BY ct.last_assigned ASC NULLS FIRST, ct.current_load ASC''',
+                  (calendar_id,))
+        team = c.fetchall()
+        
+        if not team:
+            conn.close()
+            return None
+        
+        # Simple round robin - pick the one who was assigned longest ago
+        selected = team[0]
+        
+        # Update assignment
+        c.execute('''UPDATE calendar_team 
+                     SET last_assigned = CURRENT_TIMESTAMP, current_load = current_load + 1
+                     WHERE calendar_id = ? AND team_member_id = ?''',
+                  (calendar_id, selected['team_member_id']))
+        
+        # Log the assignment
+        c.execute('''INSERT INTO round_robin_log (calendar_id, team_member_id, assignment_reason)
+                     VALUES (?, ?, ?)''',
+                  (calendar_id, selected['team_member_id'], robin_type))
+        
+        conn.commit()
+        conn.close()
+        return dict(selected)
+    except Exception as e:
+        print(f"Round robin error: {e}")
+        return None
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MESSAGES ↔ LEADS INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_lead_by_phone(phone):
+    """Find a lead by phone number"""
+    try:
+        # Normalize phone
+        digits = ''.join(filter(str.isdigit, phone))
+        if len(digits) == 10:
+            digits = '1' + digits
+        
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        # Try exact match first
+        c.execute('SELECT * FROM leads WHERE phone LIKE ? OR phone LIKE ? OR phone LIKE ?',
+                  (f'%{digits}%', f'%{digits[-10:]}%', phone))
+        lead = c.fetchone()
+        conn.close()
+        
+        return dict(lead) if lead else None
+    except Exception as e:
+        print(f"get_lead_by_phone error: {e}")
+        return None
+
+def link_conversation_to_lead(convo_id, lead_id):
+    """Link a conversation to a lead"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('UPDATE sms_conversations SET lead_id = ? WHERE id = ?', (lead_id, convo_id))
+        conn.commit()
+        conn.close()
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+def create_lead_from_conversation(convo_id):
+    """Create a new lead from a conversation"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        # Get conversation
+        c.execute('SELECT * FROM sms_conversations WHERE id = ?', (convo_id,))
+        convo = c.fetchone()
+        if not convo:
+            conn.close()
+            return {"error": "Conversation not found"}
+        
+        # Create lead
+        c.execute('''INSERT INTO leads (phone, first_name, status, source, created_at)
+                     VALUES (?, ?, 'new', 'sms', CURRENT_TIMESTAMP)''',
+                  (convo['phone'], convo['contact_name'] or 'SMS Contact'))
+        lead_id = c.lastrowid
+        
+        # Link conversation
+        c.execute('UPDATE sms_conversations SET lead_id = ? WHERE id = ?', (lead_id, convo_id))
+        
+        conn.commit()
+        conn.close()
+        return {"success": True, "lead_id": lead_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_conversation_with_lead_info(convo_id):
+    """Get conversation with linked lead information"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        c.execute('SELECT * FROM sms_conversations WHERE id = ?', (convo_id,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return {"error": "Not found"}
+        
+        convo = dict(row)
+        
+        # Get messages
+        c.execute('SELECT * FROM sms_messages WHERE conversation_id = ? ORDER BY sent_at ASC', (convo_id,))
+        convo['messages'] = [dict(r) for r in c.fetchall()]
+        
+        # Get linked lead info
+        if convo.get('lead_id'):
+            c.execute('SELECT * FROM leads WHERE id = ?', (convo['lead_id'],))
+            lead_row = c.fetchone()
+            if lead_row:
+                convo['lead'] = dict(lead_row)
+        else:
+            # Try to find lead by phone
+            lead = get_lead_by_phone(convo['phone'])
+            if lead:
+                convo['lead'] = lead
+                # Auto-link
+                c.execute('UPDATE sms_conversations SET lead_id = ? WHERE id = ?', (lead['id'], convo_id))
+                conn.commit()
+        
+        # Mark as read
+        c.execute('UPDATE sms_conversations SET unread_count = 0 WHERE id = ?', (convo_id,))
+        conn.commit()
+        conn.close()
+        return convo
+    except Exception as e:
+        return {"error": str(e)}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CLAUDE AI ASSISTANT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+
+def get_claude_config(user_id=1):
+    """Get Claude assistant configuration"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('SELECT * FROM claude_assistant_config WHERE user_id = ?', (user_id,))
+        row = c.fetchone()
+        conn.close()
+        return dict(row) if row else {"is_enabled": False}
+    except:
+        return {"is_enabled": False}
+
+def save_claude_config(user_id, config):
+    """Save Claude assistant configuration"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''INSERT OR REPLACE INTO claude_assistant_config 
+                     (user_id, api_key, model, is_enabled, system_prompt, max_tokens, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)''',
+                  (user_id, config.get('api_key', ''), config.get('model', 'claude-sonnet-4-20250514'),
+                   config.get('is_enabled', 0), config.get('system_prompt', ''),
+                   config.get('max_tokens', 4096)))
+        conn.commit()
+        conn.close()
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+def chat_with_claude(user_id, message):
+    """Send a message to Claude and get a response"""
+    try:
+        # Get config
+        config = get_claude_config(user_id)
+        api_key = config.get('api_key') or ANTHROPIC_API_KEY
+        
+        if not api_key:
+            return {"error": "Claude API key not configured. Add your API key in settings."}
+        
+        # Build system prompt for the VOICE admin assistant
+        system_prompt = config.get('system_prompt') or """You are an AI assistant for VOICE, an AI-powered CRM and sales automation platform. 
+You help administrators manage the platform, troubleshoot issues, and optimize their sales workflows.
+
+You have access to information about:
+- Leads and their status
+- Appointments and calendar management
+- SMS conversations
+- AI voice agents (Retell/VAPI)
+- Team members and round robin settings
+- Campaign performance
+
+Be helpful, concise, and proactive. If the user wants to make changes to the system, explain what you would do and confirm before taking action.
+
+When asked about code changes or fixes, provide specific solutions that can be implemented."""
+
+        # Get recent chat history
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('''SELECT role, content FROM claude_chat_history 
+                     WHERE user_id = ? ORDER BY id DESC LIMIT 10''', (user_id,))
+        history = [{"role": row['role'], "content": row['content']} for row in reversed(c.fetchall())]
+        
+        # Add current message
+        history.append({"role": "user", "content": message})
+        
+        # Call Claude API
+        import requests
+        response = requests.post(
+            'https://api.anthropic.com/v1/messages',
+            headers={
+                'Content-Type': 'application/json',
+                'x-api-key': api_key,
+                'anthropic-version': '2023-06-01'
+            },
+            json={
+                'model': config.get('model', 'claude-sonnet-4-20250514'),
+                'max_tokens': config.get('max_tokens', 4096),
+                'system': system_prompt,
+                'messages': history
+            },
+            timeout=60
+        )
+        
+        if response.status_code != 200:
+            return {"error": f"Claude API error: {response.status_code} - {response.text[:200]}"}
+        
+        result = response.json()
+        assistant_message = result.get('content', [{}])[0].get('text', 'No response')
+        
+        # Save to history
+        c.execute('''INSERT INTO claude_chat_history (user_id, role, content, tokens_used)
+                     VALUES (?, 'user', ?, 0)''', (user_id, message))
+        c.execute('''INSERT INTO claude_chat_history (user_id, role, content, tokens_used)
+                     VALUES (?, 'assistant', ?, ?)''', 
+                  (user_id, assistant_message, result.get('usage', {}).get('output_tokens', 0)))
+        conn.commit()
+        conn.close()
+        
+        return {"success": True, "message": assistant_message}
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_claude_chat_history(user_id, limit=50):
+    """Get Claude chat history"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('''SELECT * FROM claude_chat_history 
+                     WHERE user_id = ? ORDER BY id DESC LIMIT ?''', (user_id, limit))
+        history = [dict(row) for row in reversed(c.fetchall())]
+        conn.close()
+        return history
+    except:
+        return []
+
+def clear_claude_history(user_id):
+    """Clear Claude chat history"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('DELETE FROM claude_chat_history WHERE user_id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # VOICE LANDING PAGE - Stunning Marketing Website
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -8004,6 +8552,40 @@ async function openConvo(id) {
         messagesHtml = '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--gray-500);padding:40px"><div style="font-size:48px;margin-bottom:12px">💬</div><div style="font-weight:500">Start the conversation</div><div style="font-size:13px;margin-top:4px">Send a message below</div></div>';
     }
     
+    // Build lead info section
+    let leadInfoHtml = '';
+    if (convo.lead) {
+        const lead = convo.lead;
+        const statusColors = {
+            'new': '#3b82f6',
+            'contacted': '#f59e0b', 
+            'qualified': '#8b5cf6',
+            'appointment_set': '#14b8a6',
+            'sold': '#22c55e',
+            'lost': '#ef4444'
+        };
+        const statusColor = statusColors[lead.status] || '#6b7280';
+        leadInfoHtml = '<div style="padding:8px 12px;background:rgba(20,184,166,0.1);border-left:3px solid #14b8a6;display:flex;justify-content:space-between;align-items:center">' +
+            '<div style="display:flex;align-items:center;gap:10px">' +
+            '<span style="font-size:18px">👤</span>' +
+            '<div>' +
+            '<div style="font-size:12px;font-weight:600;color:#14b8a6">Linked Lead</div>' +
+            '<div style="font-size:13px;color:#fff">' + (lead.first_name || '') + ' ' + (lead.last_name || '') + '</div>' +
+            '</div>' +
+            '<span style="background:' + statusColor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase">' + (lead.status || 'new').replace('_', ' ') + '</span>' +
+            '</div>' +
+            '<button onclick="navTo(\\'leads\\');setTimeout(()=>openLeadDetail(' + lead.id + '),200)" class="btn btn-sm btn-secondary" style="font-size:11px">View Lead →</button>' +
+            '</div>';
+    } else {
+        leadInfoHtml = '<div style="padding:8px 12px;background:rgba(255,255,255,0.03);border-left:3px solid #6b7280;display:flex;justify-content:space-between;align-items:center">' +
+            '<div style="display:flex;align-items:center;gap:10px">' +
+            '<span style="font-size:18px;opacity:0.5">👤</span>' +
+            '<div style="font-size:12px;color:var(--gray-500)">Not linked to any lead</div>' +
+            '</div>' +
+            '<button onclick="convertToLead(' + convo.id + ')" class="btn btn-sm btn-primary" style="font-size:11px">+ Create Lead</button>' +
+            '</div>';
+    }
+    
     area.innerHTML = 
         '<div style="flex:1;display:flex;flex-direction:column;height:100%">' +
         // Header
@@ -8016,6 +8598,8 @@ async function openConvo(id) {
         '<button onclick="window.open(\\'tel:' + convo.phone + '\\')" class="btn btn-sm btn-secondary" style="border-radius:50%;width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center" title="Call">📞</button>' +
         '</div>' +
         '</div>' +
+        // Lead info bar
+        leadInfoHtml +
         // Messages
         '<div id="sms-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column">' + 
         messagesHtml +
@@ -8072,6 +8656,24 @@ async function sendSmsMsg() {
     // If failed, show error
     if (result.error) {
         toast('Failed to send: ' + result.error, true);
+    }
+}
+
+async function convertToLead(convoId) {
+    if (!confirm('Create a new lead from this conversation?')) return;
+    
+    toast('Creating lead...');
+    const result = await fetch('/api/sms/convert-to-lead', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({conversation_id: convoId})
+    }).then(r => r.json()).catch(() => ({error: 'Failed'}));
+    
+    if (result.success) {
+        toast('✅ Lead created!');
+        openConvo(convoId); // Refresh to show lead info
+    } else {
+        toast('❌ ' + (result.error || 'Failed to create lead'), true);
     }
 }
 
@@ -8507,6 +9109,44 @@ var currentFilter = 'all';
 
 async function loadLeads() {
     await refreshPipeline();
+}
+
+async function openLeadDetail(leadId) {
+    try {
+        const leads = pipelineData.leads || [];
+        const lead = leads.find(l => l.id === leadId);
+        
+        if (!lead) {
+            toast('Lead not found', true);
+            return;
+        }
+        
+        const statusColors = {
+            'new': '#3b82f6',
+            'contacted': '#f59e0b', 
+            'qualified': '#8b5cf6',
+            'appointment_set': '#14b8a6',
+            'sold': '#22c55e',
+            'lost': '#ef4444'
+        };
+        const statusColor = statusColors[lead.status] || '#6b7280';
+        
+        $('lead-detail-title').textContent = '📋 ' + (lead.first_name || 'Lead') + ' ' + (lead.last_name || '');
+        $('lead-detail-body').innerHTML = 
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
+            '<div><label style="font-size:12px;color:var(--gray-500)">Phone</label><div style="font-size:14px;margin-top:4px">' + (lead.phone || 'N/A') + '</div></div>' +
+            '<div><label style="font-size:12px;color:var(--gray-500)">Email</label><div style="font-size:14px;margin-top:4px">' + (lead.email || 'N/A') + '</div></div>' +
+            '<div><label style="font-size:12px;color:var(--gray-500)">Status</label><div style="margin-top:4px"><span style="background:' + statusColor + ';color:#fff;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600">' + (lead.status || 'new').replace('_', ' ').toUpperCase() + '</span></div></div>' +
+            '<div><label style="font-size:12px;color:var(--gray-500)">Source</label><div style="font-size:14px;margin-top:4px">' + (lead.source || 'Unknown') + '</div></div>' +
+            '<div style="grid-column:span 2"><label style="font-size:12px;color:var(--gray-500)">Address</label><div style="font-size:14px;margin-top:4px">' + [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(', ') + '</div></div>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">' +
+            '<button onclick="window.open(\\'tel:' + (lead.phone || '') + '\\')" class="btn btn-primary" style="flex:1">📞 Call</button>' +
+            '<button onclick="closeModal(\\'lead-detail-modal\\');navTo(\\'messages\\');setTimeout(()=>{$(\\' new-sms-phone\\').value=\\'' + (lead.phone || '') + '\\';$(\\' new-sms-name\\').value=\\'' + (lead.first_name || '') + '\\';openModal(\\'new-sms-modal\\')},200)" class="btn btn-secondary" style="flex:1">💬 Text</button>' +
+            '</div>';
+        
+        openModal('lead-detail-modal');
+    } catch(e) { console.error('openLeadDetail:', e); }
 }
 
 async function refreshPipeline() {
@@ -10010,6 +10650,188 @@ if(pw.length<8){toast('Password must be 8+ characters',true);return}
 const r=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,company:company,email:email,password:pw})}).then(r=>r.json());
 if(r.success){closeModal('signup-modal');toast('Account created! Please log in.');showLogin()}else toast(r.error||'Signup failed',true);
 }
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLAUDE AI ASSISTANT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function toggleClaudePanel() {
+    const panel = $('claude-panel');
+    if (panel.style.display === 'none' || !panel.style.display) {
+        panel.style.display = 'flex';
+        loadClaudeHistory();
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+async function loadClaudeHistory() {
+    try {
+        const history = await fetch('/api/claude/history').then(r => r.json()).catch(() => []);
+        const container = $('claude-messages');
+        if (!history.length) return;
+        
+        container.innerHTML = history.map(msg => {
+            const isUser = msg.role === 'user';
+            return '<div style="display:flex;justify-content:' + (isUser ? 'flex-end' : 'flex-start') + '">' +
+                '<div style="max-width:85%;padding:10px 14px;border-radius:16px;background:' + 
+                (isUser ? 'linear-gradient(135deg,#14b8a6,#0d9488)' : 'rgba(168,85,247,0.15)') + 
+                ';color:#fff;font-size:13px;line-height:1.5;white-space:pre-wrap">' + 
+                msg.content.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div></div>';
+        }).join('');
+        container.scrollTop = container.scrollHeight;
+    } catch(e) { console.error('loadClaudeHistory:', e); }
+}
+
+async function sendClaude() {
+    const input = $('claude-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    
+    input.value = '';
+    const container = $('claude-messages');
+    
+    // Add user message
+    container.innerHTML += '<div style="display:flex;justify-content:flex-end"><div style="max-width:85%;padding:10px 14px;border-radius:16px;background:linear-gradient(135deg,#14b8a6,#0d9488);color:#fff;font-size:13px;line-height:1.5">' + msg.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div></div>';
+    
+    // Add loading indicator
+    container.innerHTML += '<div id="claude-loading" style="display:flex;justify-content:flex-start"><div style="padding:10px 14px;border-radius:16px;background:rgba(168,85,247,0.15);color:#c4b5fd;font-size:13px">Thinking...</div></div>';
+    container.scrollTop = container.scrollHeight;
+    
+    try {
+        const result = await fetch('/api/claude/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message: msg})
+        }).then(r => r.json());
+        
+        // Remove loading
+        const loading = $('claude-loading');
+        if (loading) loading.remove();
+        
+        if (result.message) {
+            container.innerHTML += '<div style="display:flex;justify-content:flex-start"><div style="max-width:85%;padding:10px 14px;border-radius:16px;background:rgba(168,85,247,0.15);color:#e9d5ff;font-size:13px;line-height:1.5;white-space:pre-wrap">' + result.message.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div></div>';
+        } else {
+            container.innerHTML += '<div style="display:flex;justify-content:flex-start"><div style="padding:10px 14px;border-radius:16px;background:rgba(239,68,68,0.2);color:#fca5a5;font-size:13px">' + (result.error || 'Error getting response') + '</div></div>';
+        }
+        container.scrollTop = container.scrollHeight;
+    } catch(e) {
+        const loading = $('claude-loading');
+        if (loading) loading.remove();
+        container.innerHTML += '<div style="display:flex;justify-content:flex-start"><div style="padding:10px 14px;border-radius:16px;background:rgba(239,68,68,0.2);color:#fca5a5;font-size:13px">Error: ' + e.message + '</div></div>';
+    }
+}
+
+function askClaude(question) {
+    $('claude-input').value = question;
+    sendClaude();
+}
+
+async function clearClaudeChat() {
+    if (!confirm('Clear Claude chat history?')) return;
+    await fetch('/api/claude/clear', {method: 'POST'}).catch(() => {});
+    $('claude-messages').innerHTML = '<div style="background:rgba(168,85,247,0.1);border-radius:12px;padding:12px 16px;color:#e9d5ff;font-size:13px;line-height:1.5">👋 Chat cleared. How can I help you?</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TEAM & CALENDAR MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadTeamAndCalendars() {
+    try {
+        const [calendars, team] = await Promise.all([
+            fetch('/api/calendars').then(r => r.json()).catch(() => []),
+            fetch('/api/team-members').then(r => r.json()).catch(() => [])
+        ]);
+        
+        // Render calendars
+        const calList = $('calendars-list');
+        if (calList) {
+            calList.innerHTML = calendars.length ? calendars.map(cal => 
+                '<div style="padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:8px;border-left:3px solid ' + (cal.color || '#14b8a6') + '">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center">' +
+                '<div style="font-weight:600">' + cal.name + (cal.is_default ? ' <span style="font-size:10px;background:#14b8a6;color:#000;padding:2px 6px;border-radius:4px;margin-left:6px">DEFAULT</span>' : '') + '</div>' +
+                (cal.round_robin_enabled ? '<span style="font-size:10px;background:rgba(168,85,247,0.2);color:#c4b5fd;padding:2px 6px;border-radius:4px">🔄 Round Robin</span>' : '') +
+                '</div>' +
+                '<div style="font-size:12px;color:var(--gray-500);margin-top:4px">' + (cal.description || 'No description') + '</div>' +
+                '</div>'
+            ).join('') : '<div style="text-align:center;color:var(--gray-500);padding:20px">No calendars yet</div>';
+        }
+        
+        // Render team
+        const teamList = $('team-list');
+        if (teamList) {
+            teamList.innerHTML = team.length ? team.map(tm =>
+                '<div style="padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;gap:12px">' +
+                '<div style="width:36px;height:36px;border-radius:50%;background:' + (tm.color || '#14b8a6') + ';display:flex;align-items:center;justify-content:center;font-weight:600;color:#fff">' + (tm.name || 'U').charAt(0).toUpperCase() + '</div>' +
+                '<div style="flex:1">' +
+                '<div style="font-weight:600">' + tm.name + '</div>' +
+                '<div style="font-size:12px;color:var(--gray-500)">' + tm.email + ' • ' + (tm.role || 'sales_rep').replace('_', ' ') + '</div>' +
+                '</div>' +
+                '<span style="font-size:10px;background:' + (tm.is_active ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)') + ';color:' + (tm.is_active ? '#86efac' : '#fca5a5') + ';padding:2px 6px;border-radius:4px">' + (tm.is_active ? 'Active' : 'Inactive') + '</span>' +
+                '</div>'
+            ).join('') : '<div style="text-align:center;color:var(--gray-500);padding:20px">No team members yet</div>';
+        }
+    } catch(e) { console.error('loadTeamAndCalendars:', e); }
+}
+
+async function createCalendar() {
+    const data = {
+        name: $('cal-name').value.trim(),
+        description: $('cal-desc').value.trim(),
+        color: $('cal-color').value,
+        round_robin_enabled: $('cal-roundrobin').checked ? 1 : 0,
+        round_robin_type: $('cal-rr-type').value
+    };
+    
+    if (!data.name) { toast('Calendar name required', true); return; }
+    
+    const result = await fetch('/api/calendars', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).catch(() => ({error: 'Failed'}));
+    
+    if (result.success || result.id) {
+        toast('✅ Calendar created!');
+        closeModal('add-calendar-modal');
+        loadTeamAndCalendars();
+    } else {
+        toast('❌ ' + (result.error || 'Failed'), true);
+    }
+}
+
+async function createTeamMember() {
+    const data = {
+        name: $('tm-name').value.trim(),
+        email: $('tm-email').value.trim(),
+        phone: $('tm-phone').value.trim(),
+        role: $('tm-role').value,
+        color: $('tm-color').value,
+        calendly_link: $('tm-calendly').value.trim()
+    };
+    
+    if (!data.name) { toast('Name required', true); return; }
+    
+    const result = await fetch('/api/team-members', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).catch(() => ({error: 'Failed'}));
+    
+    if (result.success || result.id) {
+        toast('✅ Team member added!');
+        closeModal('add-team-modal');
+        loadTeamAndCalendars();
+    } else {
+        toast('❌ ' + (result.error || 'Failed'), true);
+    }
+}
+
+function openTeamCalendarModal() {
+    openModal('team-calendar-modal');
+    loadTeamAndCalendars();
+}
+
 async function logout(){localStorage.removeItem('session');location.reload()}
 loadDash();"""
 
@@ -10061,6 +10883,7 @@ loadDash();"""
 <p>Manage your appointments with ease</p>
 </div>
 <div class="cal-controls">
+<button onclick="openTeamCalendarModal()" style="background:rgba(168,85,247,0.15);color:#c4b5fd;border:1px solid rgba(168,85,247,0.3);padding:8px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-right:12px">👥 Team & Calendars</button>
 <div class="cal-view-switch">
 <button class="cal-view-btn active" onclick="setCalView('month')">Month</button>
 <button class="cal-view-btn" onclick="setCalView('week')">Week</button>
@@ -12232,7 +13055,87 @@ Select a conversation or start a new one
 <div class="modal-bg" id="lead-detail-modal"><div class="modal" style="max-width:600px"><h2 id="lead-detail-title">📋 Lead Details</h2><div id="lead-detail-body" style="padding:20px 0"></div></div></div>
 <div class="modal-bg" id="login-modal"><div class="modal" style="max-width:400px"><div style="text-align:center;margin-bottom:24px"><svg class="pulse-loop" viewBox="0 0 512 512" style="width:48px;height:48px" xmlns="http://www.w3.org/2000/svg"><circle cx="256" cy="256" r="180" stroke="#00D1FF" stroke-width="24" fill="none" stroke-linecap="round" stroke-dasharray="900 200"/></svg><h2 style="margin-top:12px">Welcome to VOICE</h2></div><div class="form-group"><label>Email</label><input id="login-email" type="email" placeholder="you@company.com"></div><div class="form-group"><label>Password</label><input id="login-pw" type="password" placeholder="••••••••"></div><div style="text-align:right;margin-bottom:16px"><a href="#" onclick="showForgotPassword();return false" style="font-size:13px;color:var(--cyan)">Forgot password?</a></div><div class="modal-btns" style="flex-direction:column;gap:8px"><button class="btn btn-primary" style="width:100%" onclick="doLogin()">Sign In</button><button class="btn btn-secondary" style="width:100%" onclick="showSignup()">Create Account</button></div></div></div>
 <div class="modal-bg" id="signup-modal"><div class="modal" style="max-width:400px"><h2 style="text-align:center;margin-bottom:24px">Create Your Account</h2><div class="form-group"><label>Name</label><input id="signup-name" placeholder="Your Name"></div><div class="form-group"><label>Company</label><input id="signup-company" placeholder="Company Name"></div><div class="form-group"><label>Email</label><input id="signup-email" type="email" placeholder="you@company.com"></div><div class="form-group"><label>Password</label><input id="signup-pw" type="password" placeholder="Min 8 characters"></div><div class="modal-btns" style="flex-direction:column;gap:8px"><button class="btn btn-primary" style="width:100%" onclick="doSignup()">Create Account</button><button class="btn btn-secondary" style="width:100%" onclick="showLogin()">Already have an account?</button></div></div></div>
-<div class="assistant-bar"><div class="assistant-row"><div class="assistant-label"><div class="assistant-dot"></div><span>Aria</span></div><input class="assistant-input" id="aria-input" placeholder="Ask Aria anything..." onkeydown="if(event.key==='Enter')sendAria()"><button class="assistant-btn" onclick="sendAria()">Send</button></div></div>
+<div class="assistant-bar"><div class="assistant-row"><div class="assistant-label"><div class="assistant-dot"></div><span>Aria</span></div><input class="assistant-input" id="aria-input" placeholder="Ask Aria anything..." onkeydown="if(event.key==='Enter')sendAria()"><button class="assistant-btn" onclick="sendAria()">Send</button><button class="assistant-btn" onclick="toggleClaudePanel()" style="margin-left:8px;background:linear-gradient(135deg,#a855f7,#7c3aed)" title="Claude AI Assistant">🤖</button></div></div>
+
+<!-- Claude AI Assistant Panel -->
+<div id="claude-panel" style="display:none;position:fixed;right:0;top:0;bottom:60px;width:400px;background:var(--gray-950);border-left:1px solid var(--border);z-index:1000;flex-direction:column">
+<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,rgba(168,85,247,0.1),rgba(124,58,237,0.05))">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="font-size:24px">🤖</span>
+<div>
+<div style="font-weight:600;color:#a855f7">Claude Assistant</div>
+<div style="font-size:11px;color:var(--gray-500)">AI-powered admin helper</div>
+</div>
+</div>
+<button onclick="toggleClaudePanel()" style="background:none;border:none;color:var(--gray-500);font-size:20px;cursor:pointer">✕</button>
+</div>
+<div id="claude-messages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="background:rgba(168,85,247,0.1);border-radius:12px;padding:12px 16px;color:#e9d5ff;font-size:13px;line-height:1.5">
+👋 Hi! I'm Claude, your AI assistant. I can help you:<br><br>
+• Debug issues with the app<br>
+• Explain how features work<br>
+• Suggest optimizations<br>
+• Write code snippets<br><br>
+What would you like help with?
+</div>
+</div>
+<div style="padding:12px 16px;border-top:1px solid var(--border);background:rgba(0,0,0,0.2)">
+<div style="display:flex;gap:8px">
+<input id="claude-input" style="flex:1;padding:12px 16px;border-radius:20px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:#fff;font-size:14px" placeholder="Ask Claude anything..." onkeypress="if(event.key==='Enter')sendClaude()">
+<button onclick="sendClaude()" style="background:linear-gradient(135deg,#a855f7,#7c3aed);border:none;border-radius:50%;width:44px;height:44px;color:#fff;font-size:18px;cursor:pointer">➤</button>
+</div>
+<div style="display:flex;gap:8px;margin-top:8px">
+<button onclick="askClaude('How do I fix JavaScript errors?')" style="flex:1;padding:6px 10px;border-radius:16px;border:1px solid rgba(168,85,247,0.3);background:rgba(168,85,247,0.1);color:#c4b5fd;font-size:11px;cursor:pointer">Fix JS errors</button>
+<button onclick="askClaude('How do I add a new feature?')" style="flex:1;padding:6px 10px;border-radius:16px;border:1px solid rgba(168,85,247,0.3);background:rgba(168,85,247,0.1);color:#c4b5fd;font-size:11px;cursor:pointer">Add feature</button>
+<button onclick="clearClaudeChat()" style="padding:6px 10px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:var(--gray-500);font-size:11px;cursor:pointer">Clear</button>
+</div>
+</div>
+</div>
+
+<!-- Team Calendar Modal -->
+<div class="modal-bg" id="team-calendar-modal"><div class="modal" style="max-width:700px">
+<h2>👥 Team & Calendars</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+<div>
+<h3 style="font-size:14px;margin-bottom:12px;color:var(--gray-400)">📅 Calendars</h3>
+<div id="calendars-list" style="max-height:300px;overflow-y:auto"></div>
+<button onclick="openModal('add-calendar-modal')" class="btn btn-sm btn-primary" style="margin-top:12px;width:100%">+ Add Calendar</button>
+</div>
+<div>
+<h3 style="font-size:14px;margin-bottom:12px;color:var(--gray-400)">👤 Team Members</h3>
+<div id="team-list" style="max-height:300px;overflow-y:auto"></div>
+<button onclick="openModal('add-team-modal')" class="btn btn-sm btn-primary" style="margin-top:12px;width:100%">+ Add Team Member</button>
+</div>
+</div>
+<div class="modal-btns" style="margin-top:20px"><button class="btn btn-secondary" onclick="closeModal('team-calendar-modal')">Close</button></div>
+</div></div>
+
+<!-- Add Calendar Modal -->
+<div class="modal-bg" id="add-calendar-modal"><div class="modal" style="max-width:400px">
+<h2>📅 New Calendar</h2>
+<div class="form-group"><label>Calendar Name</label><input id="cal-name" placeholder="Sales Team Calendar"></div>
+<div class="form-group"><label>Description</label><input id="cal-desc" placeholder="Optional description"></div>
+<div class="form-group"><label>Color</label><input id="cal-color" type="color" value="#14b8a6" style="height:40px;padding:4px"></div>
+<div class="form-group" style="display:flex;align-items:center;gap:10px">
+<input type="checkbox" id="cal-roundrobin" style="width:18px;height:18px">
+<label for="cal-roundrobin" style="margin:0">Enable Round Robin</label>
+</div>
+<div class="form-group"><label>Round Robin Type</label><select id="cal-rr-type"><option value="equal">Equal Distribution</option><option value="weighted">Weighted</option><option value="availability">By Availability</option></select></div>
+<div class="modal-btns"><button class="btn btn-secondary" onclick="closeModal('add-calendar-modal')">Cancel</button><button class="btn btn-primary" onclick="createCalendar()">Create Calendar</button></div>
+</div></div>
+
+<!-- Add Team Member Modal -->
+<div class="modal-bg" id="add-team-modal"><div class="modal" style="max-width:400px">
+<h2>👤 New Team Member</h2>
+<div class="form-group"><label>Name</label><input id="tm-name" placeholder="John Smith"></div>
+<div class="form-group"><label>Email</label><input id="tm-email" type="email" placeholder="john@company.com"></div>
+<div class="form-group"><label>Phone</label><input id="tm-phone" type="tel" placeholder="+1 (555) 123-4567"></div>
+<div class="form-group"><label>Role</label><select id="tm-role"><option value="sales_rep">Sales Rep</option><option value="manager">Manager</option><option value="admin">Admin</option><option value="support">Support</option></select></div>
+<div class="form-group"><label>Color</label><input id="tm-color" type="color" value="#14b8a6" style="height:40px;padding:4px"></div>
+<div class="form-group"><label>Calendly Link (optional)</label><input id="tm-calendly" placeholder="https://calendly.com/..."></div>
+<div class="modal-btns"><button class="btn btn-secondary" onclick="closeModal('add-team-modal')">Cancel</button><button class="btn btn-primary" onclick="createTeamMember()">Add Member</button></div>
+</div></div>
+
 <div class="toast" id="toast"></div>"""
 
     return f'''<!DOCTYPE html>
@@ -12356,12 +13259,37 @@ class Handler(BaseHTTPRequestHandler):
         
         elif path == '/api/sms/conversations':
             self.send_json(get_sms_conversations())
+            return
         elif path.startswith('/api/sms/conversations/'):
             try:
                 convo_id = int(path.split('/')[-1])
-                self.send_json(get_sms_conversation(convo_id))
+                self.send_json(get_conversation_with_lead_info(convo_id))
             except:
                 self.send_json({"error": "Invalid ID"})
+            return
+        
+        # Team & Calendar API
+        elif path == '/api/team-members':
+            self.send_json(get_team_members())
+            return
+        elif path == '/api/calendars':
+            self.send_json(get_calendars())
+            return
+        elif path.startswith('/api/calendar-team/'):
+            try:
+                cal_id = int(path.split('/')[-1])
+                self.send_json(get_calendar_team(cal_id))
+            except:
+                self.send_json([])
+            return
+        
+        # Claude Assistant API
+        elif path == '/api/claude/config':
+            self.send_json(get_claude_config())
+            return
+        elif path == '/api/claude/history':
+            self.send_json(get_claude_chat_history(1))
+            return
 
         if path == '/':
             self.send_html(get_landing_page())
@@ -12658,6 +13586,41 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(result)
         elif path == '/api/sms/send':
             result = send_sms_to_conversation(d.get('conversation_id'), d.get('phone'), d.get('message'))
+            self.send_json(result)
+        elif path == '/api/sms/convert-to-lead':
+            result = create_lead_from_conversation(d.get('conversation_id'))
+            self.send_json(result)
+        elif path == '/api/sms/link-lead':
+            result = link_conversation_to_lead(d.get('conversation_id'), d.get('lead_id'))
+            self.send_json(result)
+        
+        # Team & Calendar API POST routes
+        elif path == '/api/team-members':
+            result = create_team_member(d)
+            self.send_json(result)
+        elif path.startswith('/api/team-members/'):
+            member_id = int(path.split('/')[-1])
+            result = update_team_member(member_id, d)
+            self.send_json(result)
+        elif path == '/api/calendars':
+            result = create_calendar(d)
+            self.send_json(result)
+        elif path == '/api/calendar-team/assign':
+            result = assign_to_calendar(d.get('calendar_id'), d.get('team_member_id'), d.get('weight', 1))
+            self.send_json(result)
+        elif path == '/api/round-robin/next':
+            result = get_next_round_robin(d.get('calendar_id'))
+            self.send_json(result or {"error": "No available team member"})
+        
+        # Claude Assistant API POST routes
+        elif path == '/api/claude/chat':
+            result = chat_with_claude(1, d.get('message', ''))
+            self.send_json(result)
+        elif path == '/api/claude/config':
+            result = save_claude_config(1, d)
+            self.send_json(result)
+        elif path == '/api/claude/clear':
+            result = clear_claude_history(1)
             self.send_json(result)
         
         # Phone config update

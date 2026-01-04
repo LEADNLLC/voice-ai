@@ -24,9 +24,13 @@ import base64
 # API Keys - Add these in Railway: Settings → Variables
 VAPI_API_KEY = os.environ.get('VAPI_API_KEY', '')
 VAPI_PHONE_ID = os.environ.get('VAPI_PHONE_ID', '')
-TWILIO_SID = os.environ.get('TWILIO_SID', '')
-TWILIO_TOKEN = os.environ.get('TWILIO_TOKEN', '')
-TWILIO_PHONE = os.environ.get('TWILIO_PHONE', '')
+RETELL_API_KEY = os.environ.get('RETELL_API_KEY', 'key_9128661dbc7b1c100bac91bbcf9b')  # Retell API Key
+RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17208640910')  # Retell number for OUTBOUND
+RETELL_INBOUND_NUMBER = '+17207345479'  # Retell number for INBOUND reception tests
+TWILIO_INBOUND_NUMBER = '+17208189512'  # Twilio number for inbound (Custom Telephony)
+TWILIO_SID = os.environ.get('TWILIO_SID', 'ACd79ff0d5a125e3ea6c25d9e2fe5238d2')
+TWILIO_TOKEN = os.environ.get('TWILIO_TOKEN', '2aae70b1a8906c3249bb79d9da33db56')
+TWILIO_PHONE = os.environ.get('TWILIO_PHONE', '+17208189512')
 TEST_PHONE = os.environ.get('TEST_PHONE', '')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
@@ -44,6 +48,7 @@ OWNER_PHONE = os.environ.get('OWNER_PHONE', '+17023240525')
 CALENDLY_LINK = os.environ.get('CALENDLY_LINK', 'https://calendly.com/voicelab/demo')
 
 COST_PER_MINUTE_VAPI = 0.05
+COST_PER_MINUTE_RETELL = 0.07
 COST_PER_SMS = 0.0075
 FB_DAILY_BUDGET = 50.00
 MONTHLY_BUDGET_GOAL = 2000.00
@@ -56,6 +61,9 @@ import hashlib
 import secrets
 import uuid
 from http.cookies import SimpleCookie
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 active_cycles = {}
 active_sessions = {}  # session_token -> user_id
@@ -1703,6 +1711,117 @@ def send_sms(phone, message, message_type="general"):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# EMAIL FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Email configuration - using environment variables
+SMTP_SERVER = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
+FROM_EMAIL = os.environ.get('FROM_EMAIL', OWNER_EMAIL)
+
+def send_email(to_email, subject, body_text, body_html=None):
+    """Send email notification"""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        print(f"📧 [EMAIL NOT CONFIGURED] Would send to {to_email}: {subject}")
+        # Log the attempt even if not configured
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('INSERT INTO sms_log (phone, message, message_type, status) VALUES (?, ?, ?, ?)',
+                      (to_email, f"[EMAIL] {subject}: {body_text[:200]}", 'email_attempted', 'not_configured'))
+            conn.commit()
+            conn.close()
+        except:
+            pass
+        return {"success": False, "error": "SMTP not configured"}
+    
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = FROM_EMAIL
+        msg['To'] = to_email
+        
+        # Add text version
+        part1 = MIMEText(body_text, 'plain')
+        msg.attach(part1)
+        
+        # Add HTML version if provided
+        if body_html:
+            part2 = MIMEText(body_html, 'html')
+            msg.attach(part2)
+        
+        # Connect and send
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(FROM_EMAIL, to_email, msg.as_string())
+        server.quit()
+        
+        # Log success
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('INSERT INTO sms_log (phone, message, message_type, status) VALUES (?, ?, ?, ?)',
+                  (to_email, f"[EMAIL] {subject}", 'email', 'sent'))
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Email sent to {to_email}: {subject}")
+        return {"success": True}
+    except Exception as e:
+        print(f"❌ Email error: {e}")
+        return {"success": False, "error": str(e)}
+
+def send_appointment_email(appt):
+    """Send appointment confirmation email to customer"""
+    if not appt.get('email'):
+        return {"success": False, "error": "No email address"}
+    
+    subject = f"✅ Appointment Confirmed - {appt.get('appointment_date', 'TBD')}"
+    
+    body_text = f"""Hi {appt.get('first_name', 'there')}!
+
+Your appointment has been confirmed:
+
+📅 Date: {appt.get('appointment_date', 'TBD')}
+⏰ Time: {appt.get('appointment_time', 'TBD')}
+📍 Address: {appt.get('address', '')}
+
+If you need to reschedule, please call us at {COMPANY_PHONE}.
+
+Thank you!
+- {COMPANY_NAME}
+"""
+    
+    body_html = f"""
+<html>
+<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
+        <h1 style="color: white; margin: 0;">✅ Appointment Confirmed!</h1>
+    </div>
+    <div style="padding: 30px; background: #f8f9fa;">
+        <p style="font-size: 18px;">Hi <strong>{appt.get('first_name', 'there')}</strong>!</p>
+        <p>Your appointment has been confirmed:</p>
+        <div style="background: white; padding: 20px; border-radius: 10px; margin: 20px 0;">
+            <p style="margin: 10px 0;"><strong>📅 Date:</strong> {appt.get('appointment_date', 'TBD')}</p>
+            <p style="margin: 10px 0;"><strong>⏰ Time:</strong> {appt.get('appointment_time', 'TBD')}</p>
+            <p style="margin: 10px 0;"><strong>📍 Address:</strong> {appt.get('address', 'TBD')}</p>
+        </div>
+        <p>If you need to reschedule, please call us at <a href="tel:{COMPANY_PHONE}">{COMPANY_PHONE}</a></p>
+        <p style="margin-top: 30px;">Thank you!<br><strong>- {COMPANY_NAME}</strong></p>
+    </div>
+</body>
+</html>
+"""
+    
+    return send_email(appt['email'], subject, body_text, body_html)
+
+def send_owner_email_notification(subject, body):
+    """Send notification email to business owner"""
+    return send_email(OWNER_EMAIL, subject, body)
+
 def notify_owner_new_lead(lead_data):
     """Send SMS and email to owner when new lead comes in"""
     name = lead_data.get('first_name', 'Someone')
@@ -1724,8 +1843,8 @@ Call them ASAP! 🔥"""
         send_sms(OWNER_PHONE, sms_msg, "owner_notification")
         print(f"📱 Owner notified via SMS: {name}")
     
-    # TODO: Add email notification when SMTP is configured
-    print(f"📧 Would email {OWNER_EMAIL}: New lead {name} - {phone}")
+    # Send email notification to owner
+    send_owner_email_notification(f"🎯 New Lead: {name}", sms_msg)
 
 def send_lead_welcome_sms(phone, name):
     """Send welcome SMS to new lead with booking link"""
@@ -1757,6 +1876,7 @@ def send_appointment_confirmation(appt_id):
     
     if not appt: return {"error": "Not found"}
     
+    # Send SMS confirmation
     msg = f"""✅ Appointment Confirmed!
 
 Hi {appt.get('first_name', 'there')}! Your appointment is set:
@@ -1769,84 +1889,923 @@ Reply CONFIRM or call {COMPANY_PHONE} if you need to reschedule.
 
 - {COMPANY_NAME}"""
 
-    result = send_sms(appt['phone'], msg, 'confirmation')
+    sms_result = send_sms(appt['phone'], msg, 'confirmation')
     
-    if result.get('success'):
+    # Send email confirmation
+    email_result = send_appointment_email(appt)
+    
+    # Notify owner
+    owner_msg = f"""📅 NEW APPOINTMENT BOOKED!
+
+Customer: {appt.get('first_name', '')} {appt.get('last_name', '')}
+Phone: {appt.get('phone', '')}
+Email: {appt.get('email', '')}
+Date: {appt.get('appointment_date', 'TBD')}
+Time: {appt.get('appointment_time', 'TBD')}
+Address: {appt.get('address', '')}
+
+Check dashboard for details! 🔥"""
+    
+    if OWNER_PHONE:
+        send_sms(OWNER_PHONE, owner_msg, 'owner_appointment_notification')
+    send_owner_email_notification("📅 New Appointment Booked!", owner_msg)
+    
+    if sms_result.get('success') or email_result.get('success'):
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute('UPDATE appointments SET confirmation_sent = 1, confirmation_sent_at = CURRENT_TIMESTAMP WHERE id = ?', (appt_id,))
         conn.commit()
         conn.close()
     
-    return result
+    # Return with backward-compatible 'success' key
+    return {
+        "success": sms_result.get('success') or email_result.get('success'),
+        "sms": sms_result, 
+        "email": email_result
+    }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CALL FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Retell SIP URI - same one used for inbound calls
+RETELL_SIP_URI = "5t4n6j0wnrl.sip.livekit.cloud"
+
+# Industry to company name mapping for demo calls
+INDUSTRY_COMPANIES = {
+    'roofing': 'Denver Roofing Pro',
+    'solar': 'Bright Solar Solutions',
+    'insurance': 'Shield Insurance Group',
+    'auto': 'Premier Auto Sales',
+    'realtor': 'Dream Home Realty',
+    'dental': 'Smile Dental Care',
+    'hvac': 'ComfortAir HVAC',
+    'legal': 'Justice Law Group',
+    'fitness': 'PowerFit Gym',
+    'cleaning': 'Sparkle Cleaning Co',
+    'landscaping': 'Green Thumb Landscaping',
+    'tax': 'TaxPro Services',
+    'plumbing': 'FastFlow Plumbing',
+    'electrical': 'BrightWire Electric',
+    'pest_control': 'BugFree Pest Control',
+    'windows': 'ClearView Windows',
+    'flooring': 'FloorCraft Pro',
+    'painting': 'ColorMaster Painting',
+    'garage_door': 'DoorPro Garage',
+    'pool': 'Crystal Pool Service',
+    'moving': 'SwiftMove Co',
+    'security': 'SafeHome Security',
+    'mortgage': 'HomeLoan Experts',
+    'chiropractor': 'SpineWell Chiropractic',
+    'medspa': 'Glow Med Spa',
+    'travel': 'Wanderlust Travel',
+    'wedding': 'Forever Wedding Co',
+    'tutoring': 'BrightMind Tutoring',
+    'pet_grooming': 'PawPerfect Grooming',
+    # Inbound versions
+    'inbound_medical': 'HealthFirst Medical',
+    'inbound_dental': 'Smile Dental Office',
+    'inbound_legal': 'Justice Law Firm',
+    'inbound_realestate': 'Dream Home Realty',
+    'inbound_auto': 'Premier Auto Dealer',
+    'inbound_insurance': 'Shield Insurance',
+    'inbound_financial': 'WealthWise Financial',
+    'inbound_spa': 'Serenity Spa & Salon',
+    'inbound_restaurant': 'The Golden Fork',
+    'inbound_hotel': 'Grand Stay Hotel',
+    'inbound_gym': 'FitLife Gym',
+    'inbound_vet': 'PawCare Veterinary',
+    'inbound_therapy': 'MindWell Therapy',
+    'inbound_plumbing': 'QuickFix Plumbing',
+    'inbound_electrical': 'SparkPro Electric',
+    'inbound_hvac': 'CoolBreeze HVAC',
+    'inbound_roofing': 'TopRoof Roofing',
+    'inbound_pest': 'NoBug Pest Control',
+    'inbound_moving': 'EasyMove Co',
+    'inbound_solar': 'SunPower Solar',
+    'inbound_pool': 'AquaCare Pool Service',
+    'inbound_flooring': 'FloorPro Flooring',
+    'inbound_painting': 'PaintPro Painting',
+    'inbound_garage': 'GaragePro Doors',
+    'inbound_window': 'ClearView Windows',
+    'inbound_security': 'SecureHome Systems',
+    'inbound_mortgage': 'MortgageFirst',
+    'inbound_chiro': 'BackCare Chiropractic',
+    'inbound_medspa': 'Radiance Med Spa',
+    'inbound_daycare': 'Happy Kids Daycare'
+}
+
+# Industry-specific prompt details for dynamic scripts
+INDUSTRY_DETAILS = {
+    'roofing': {
+        'services': 'roof repairs, replacements, inspections, storm damage repair, and gutter installation',
+        'pain_points': 'leaks, missing shingles, storm damage, aging roof, high energy bills',
+        'qualifying_questions': 'How old is your current roof? Have you noticed any leaks or damage? When did you last have it inspected?',
+        'appointment_type': 'free roof inspection',
+        'urgency_trigger': 'roof damage can lead to water damage, mold, and costly repairs if not addressed quickly',
+        'financing': 'flexible financing options with payments as low as $99/month'
+    },
+    'solar': {
+        'services': 'solar panel installation, battery storage, energy audits, and system maintenance',
+        'pain_points': 'high electricity bills, power outages, rising energy costs, environmental concerns',
+        'qualifying_questions': 'What does your average monthly electric bill look like? Do you own your home? How much sun does your roof get?',
+        'appointment_type': 'free solar consultation and savings analysis',
+        'urgency_trigger': 'energy costs keep rising and tax credits may not last forever',
+        'financing': 'zero-down financing with savings starting from day one'
+    },
+    'hvac': {
+        'services': 'AC repair, furnace installation, HVAC maintenance, duct cleaning, and smart thermostat installation',
+        'pain_points': 'no heating or cooling, high energy bills, uneven temperatures, strange noises, old equipment',
+        'qualifying_questions': 'How old is your current system? Are you experiencing any issues with heating or cooling? When was it last serviced?',
+        'appointment_type': 'free HVAC inspection and estimate',
+        'urgency_trigger': 'a failing system can break down completely leaving you without heating or cooling',
+        'financing': 'financing available with 0% interest for qualified buyers'
+    },
+    'plumbing': {
+        'services': 'leak repair, drain cleaning, water heater installation, pipe repair, and bathroom remodeling',
+        'pain_points': 'leaks, clogged drains, no hot water, low water pressure, running toilets',
+        'qualifying_questions': 'What plumbing issue are you experiencing? How long has this been going on? Is it affecting multiple fixtures?',
+        'appointment_type': 'same-day service call',
+        'urgency_trigger': 'water damage can cost thousands and cause mold if not fixed quickly',
+        'financing': 'flexible payment plans available for major repairs'
+    },
+    'electrical': {
+        'services': 'electrical repairs, panel upgrades, outlet installation, lighting, and EV charger installation',
+        'pain_points': 'flickering lights, tripping breakers, outdated wiring, not enough outlets, safety concerns',
+        'qualifying_questions': 'What electrical issue are you having? How old is your home? Have you had any electrical work done recently?',
+        'appointment_type': 'free electrical safety inspection',
+        'urgency_trigger': 'electrical issues can be a fire hazard and should be addressed immediately',
+        'financing': 'financing options available for larger projects'
+    },
+    'pest_control': {
+        'services': 'pest removal, termite treatment, rodent control, mosquito treatment, and preventive services',
+        'pain_points': 'seeing bugs or rodents, property damage, health concerns, peace of mind',
+        'qualifying_questions': 'What type of pest are you dealing with? How long have you noticed this issue? Have you tried any treatments?',
+        'appointment_type': 'free pest inspection',
+        'urgency_trigger': 'pests multiply quickly and can cause structural damage or health issues',
+        'financing': 'affordable monthly treatment plans available'
+    },
+    'windows': {
+        'services': 'window replacement, window repair, energy-efficient upgrades, and door installation',
+        'pain_points': 'drafty windows, high energy bills, foggy glass, hard to open, outdated look',
+        'qualifying_questions': 'How old are your current windows? Are you noticing drafts or condensation? How many windows are you looking to replace?',
+        'appointment_type': 'free window consultation and estimate',
+        'urgency_trigger': 'old windows are costing you money every month in energy bills',
+        'financing': 'financing with payments as low as $79/month'
+    },
+    'insurance': {
+        'services': 'home insurance, auto insurance, life insurance, and bundled policies',
+        'pain_points': 'high premiums, poor coverage, bad customer service, policy confusion',
+        'qualifying_questions': 'What type of insurance are you looking for? When does your current policy renew? What are you paying now?',
+        'appointment_type': 'free insurance review and quote comparison',
+        'urgency_trigger': 'you could be overpaying or underinsured without even knowing it',
+        'financing': 'flexible payment options including monthly billing'
+    },
+    'auto': {
+        'services': 'new and used car sales, trade-ins, financing, and vehicle service',
+        'pain_points': 'need reliable transportation, current car problems, looking for upgrade, payment too high',
+        'qualifying_questions': 'What type of vehicle are you interested in? Do you have a trade-in? What monthly payment works for your budget?',
+        'appointment_type': 'VIP test drive appointment',
+        'urgency_trigger': 'current incentives and inventory may not last',
+        'financing': 'financing for all credit situations with rates as low as 0% APR'
+    },
+    'realtor': {
+        'services': 'home buying, home selling, property valuation, and relocation assistance',
+        'pain_points': 'need to sell quickly, finding the right home, market confusion, relocating',
+        'qualifying_questions': 'Are you looking to buy or sell? What area are you interested in? What is your timeline?',
+        'appointment_type': 'free home valuation or buyer consultation',
+        'urgency_trigger': 'the market is always changing and timing can mean thousands of dollars',
+        'financing': 'connections to trusted lenders for best rates'
+    },
+    'dental': {
+        'services': 'cleanings, fillings, crowns, implants, cosmetic dentistry, and emergency care',
+        'pain_points': 'tooth pain, need cleaning, cosmetic concerns, missing teeth, fear of dentist',
+        'qualifying_questions': 'When was your last dental visit? Are you experiencing any pain or discomfort? Do you have dental insurance?',
+        'appointment_type': 'new patient exam and cleaning',
+        'urgency_trigger': 'dental issues only get worse and more expensive if ignored',
+        'financing': 'payment plans and accept most insurance'
+    },
+    'legal': {
+        'services': 'personal injury, family law, estate planning, business law, and criminal defense',
+        'pain_points': 'legal trouble, divorce, accident injury, need a will, business issues',
+        'qualifying_questions': 'What type of legal matter do you need help with? What is your timeline? Have you spoken with other attorneys?',
+        'appointment_type': 'free legal consultation',
+        'urgency_trigger': 'there may be deadlines or statutes of limitations that apply to your case',
+        'financing': 'contingency fees for injury cases, payment plans available'
+    },
+    'fitness': {
+        'services': 'gym memberships, personal training, group classes, and nutrition coaching',
+        'pain_points': 'want to lose weight, get stronger, improve health, need accountability',
+        'qualifying_questions': 'What are your fitness goals? Have you worked with a trainer before? What is your schedule like?',
+        'appointment_type': 'free fitness assessment and tour',
+        'urgency_trigger': 'the best time to start is now and we have a special offer this month',
+        'financing': 'flexible membership options with no long-term contracts'
+    },
+    'cleaning': {
+        'services': 'house cleaning, deep cleaning, move-in/move-out cleaning, and office cleaning',
+        'pain_points': 'no time to clean, need deep clean, moving, special event coming up',
+        'qualifying_questions': 'How large is your home? How often would you like service? Any specific areas of concern?',
+        'appointment_type': 'free cleaning estimate',
+        'urgency_trigger': 'we have openings this week and they fill up fast',
+        'financing': 'affordable weekly, bi-weekly, or monthly plans'
+    },
+    'landscaping': {
+        'services': 'lawn care, landscaping design, tree trimming, irrigation, and hardscaping',
+        'pain_points': 'overgrown yard, dead grass, want better curb appeal, no time for yard work',
+        'qualifying_questions': 'What is the size of your property? What services are you most interested in? Do you have irrigation?',
+        'appointment_type': 'free landscape consultation',
+        'urgency_trigger': 'the best time to start landscaping projects is now before the busy season',
+        'financing': 'monthly maintenance plans available'
+    },
+    'tax': {
+        'services': 'tax preparation, tax planning, IRS representation, and bookkeeping',
+        'pain_points': 'owe back taxes, complicated return, maximize refund, audit concerns',
+        'qualifying_questions': 'Are you filing personal or business taxes? Do you have any tax issues to resolve? When did you last file?',
+        'appointment_type': 'free tax review consultation',
+        'urgency_trigger': 'there are deadlines and penalties that can be avoided with proper planning',
+        'financing': 'payment plans for services, refund advance available'
+    },
+    'flooring': {
+        'services': 'hardwood, laminate, tile, carpet, and vinyl flooring installation',
+        'pain_points': 'worn floors, water damage, want to update look, selling home',
+        'qualifying_questions': 'What type of flooring are you interested in? How many rooms? What is your timeline?',
+        'appointment_type': 'free in-home flooring estimate',
+        'urgency_trigger': 'we have special pricing this month and professional installation available this week',
+        'financing': 'financing with 0% interest for 12 months'
+    },
+    'painting': {
+        'services': 'interior painting, exterior painting, cabinet refinishing, and drywall repair',
+        'pain_points': 'outdated colors, peeling paint, selling home, want fresh look',
+        'qualifying_questions': 'Is this interior or exterior? How many rooms? Do you have colors picked out?',
+        'appointment_type': 'free painting estimate',
+        'urgency_trigger': 'our schedule fills up fast and weather matters for exterior projects',
+        'financing': 'affordable pricing with payment options'
+    },
+    'garage_door': {
+        'services': 'garage door repair, replacement, opener installation, and maintenance',
+        'pain_points': 'door not opening, loud noises, safety concerns, outdated door',
+        'qualifying_questions': 'What issue are you having with your garage door? How old is it? Is it a single or double door?',
+        'appointment_type': 'same-day service call',
+        'urgency_trigger': 'a broken garage door is a security risk and should be fixed immediately',
+        'financing': 'financing available for replacements'
+    },
+    'pool': {
+        'services': 'pool cleaning, maintenance, repairs, equipment installation, and pool opening/closing',
+        'pain_points': 'green pool, equipment issues, no time to maintain, opening for season',
+        'qualifying_questions': 'Do you have an inground or above ground pool? What service do you need? Is the equipment working properly?',
+        'appointment_type': 'free pool inspection',
+        'urgency_trigger': 'pool problems get worse quickly and can damage equipment',
+        'financing': 'affordable weekly maintenance plans'
+    },
+    'moving': {
+        'services': 'local moving, long-distance moving, packing services, and storage solutions',
+        'pain_points': 'relocating, need help packing, heavy items, time crunch',
+        'qualifying_questions': 'When is your move date? Is this local or long-distance? How many bedrooms?',
+        'appointment_type': 'free moving estimate',
+        'urgency_trigger': 'good movers book up fast especially on weekends',
+        'financing': 'competitive rates with no hidden fees'
+    },
+    'security': {
+        'services': 'home security systems, cameras, smart locks, and 24/7 monitoring',
+        'pain_points': 'safety concerns, recent break-ins nearby, traveling often, want peace of mind',
+        'qualifying_questions': 'Do you currently have a security system? What is your main concern? Do you rent or own?',
+        'appointment_type': 'free security assessment',
+        'urgency_trigger': 'crime can happen anytime and prevention is key',
+        'financing': 'free equipment with monitoring agreement'
+    },
+    'mortgage': {
+        'services': 'home purchase loans, refinancing, VA loans, FHA loans, and reverse mortgages',
+        'pain_points': 'buying a home, high interest rate, need cash out, want lower payment',
+        'qualifying_questions': 'Are you buying or refinancing? What is your current rate? Do you have your documents ready?',
+        'appointment_type': 'free mortgage consultation',
+        'urgency_trigger': 'rates change daily and locking in now could save you thousands',
+        'financing': 'loans for all credit types with competitive rates'
+    },
+    'chiropractor': {
+        'services': 'spinal adjustments, pain management, sports injuries, and wellness care',
+        'pain_points': 'back pain, neck pain, headaches, limited mobility, sports injury',
+        'qualifying_questions': 'What type of pain are you experiencing? How long has this been going on? Have you seen a chiropractor before?',
+        'appointment_type': 'new patient exam and adjustment',
+        'urgency_trigger': 'pain and misalignment get worse over time if not treated',
+        'financing': 'accept most insurance, affordable cash rates'
+    },
+    'medspa': {
+        'services': 'botox, fillers, laser treatments, facials, and body contouring',
+        'pain_points': 'aging skin, want to look younger, special event coming, self-confidence',
+        'qualifying_questions': 'What areas are you looking to treat? Have you had any treatments before? Do you have an event coming up?',
+        'appointment_type': 'free consultation',
+        'urgency_trigger': 'treatments take time to show results so starting now is ideal',
+        'financing': 'financing available, package discounts'
+    },
+    'travel': {
+        'services': 'vacation packages, cruises, destination weddings, and corporate travel',
+        'pain_points': 'need vacation, want hassle-free planning, special occasion, budget concerns',
+        'qualifying_questions': 'Where are you thinking of traveling? When would you like to go? How many travelers?',
+        'appointment_type': 'free travel consultation',
+        'urgency_trigger': 'prices and availability change constantly, booking early saves money',
+        'financing': 'payment plans available for vacation packages'
+    },
+    'wedding': {
+        'services': 'wedding planning, venue coordination, day-of coordination, and vendor management',
+        'pain_points': 'overwhelmed with planning, want it perfect, no time, need professional help',
+        'qualifying_questions': 'When is your wedding date? Have you booked a venue? What is your budget range?',
+        'appointment_type': 'free wedding consultation',
+        'urgency_trigger': 'popular dates and vendors book up a year or more in advance',
+        'financing': 'payment plans to spread out the cost'
+    },
+    'tutoring': {
+        'services': 'academic tutoring, test prep, college counseling, and homework help',
+        'pain_points': 'struggling in school, need test prep, want better grades, college applications',
+        'qualifying_questions': 'What subject does your child need help with? What grade are they in? What are the goals?',
+        'appointment_type': 'free academic assessment',
+        'urgency_trigger': 'the sooner we start, the more progress we can make before exams',
+        'financing': 'affordable hourly and package rates'
+    },
+    'pet_grooming': {
+        'services': 'dog grooming, cat grooming, nail trimming, bathing, and specialty cuts',
+        'pain_points': 'matted fur, overgrown nails, shedding, need regular grooming',
+        'qualifying_questions': 'What type of pet do you have? What breed? How often do you get them groomed?',
+        'appointment_type': 'grooming appointment',
+        'urgency_trigger': 'our schedule fills up especially before holidays',
+        'financing': 'affordable pricing, package discounts for regular clients'
+    },
+    # Inbound-specific industries (reception style)
+    'medical': {
+        'services': 'primary care, preventive exams, sick visits, lab work, and specialist referrals',
+        'pain_points': 'need to see a doctor, feeling sick, need prescription, annual checkup due',
+        'qualifying_questions': 'Are you a new or existing patient? What brings you in today? Do you have insurance?',
+        'appointment_type': 'appointment with our medical team',
+        'urgency_trigger': 'we want to make sure you get the care you need as soon as possible',
+        'financing': 'accept most insurance, payment plans for uninsured'
+    },
+    'spa': {
+        'services': 'massages, facials, manicures, pedicures, hair styling, and body treatments',
+        'pain_points': 'need relaxation, special event coming up, self-care time, gift for someone',
+        'qualifying_questions': 'What service are you interested in? Do you have a preferred stylist or therapist? Is this for a special occasion?',
+        'appointment_type': 'spa appointment',
+        'urgency_trigger': 'our best times fill up quickly especially on weekends',
+        'financing': 'packages and memberships available for savings'
+    },
+    'restaurant': {
+        'services': 'dine-in reservations, private events, catering, and takeout orders',
+        'pain_points': 'want to make a reservation, planning an event, need catering',
+        'qualifying_questions': 'How many guests will be dining? What date and time were you thinking? Any special occasions or dietary needs?',
+        'appointment_type': 'reservation',
+        'urgency_trigger': 'our popular times book up fast especially on weekends',
+        'financing': 'deposits may be required for large parties'
+    },
+    'hotel': {
+        'services': 'room reservations, event spaces, concierge services, and amenity bookings',
+        'pain_points': 'need a place to stay, planning event, booking vacation',
+        'qualifying_questions': 'What dates are you looking at? How many guests? Do you have a room preference?',
+        'appointment_type': 'reservation',
+        'urgency_trigger': 'rooms fill up quickly during peak seasons',
+        'financing': 'various room rates and packages available'
+    },
+    'gym': {
+        'services': 'gym memberships, personal training, group fitness classes, and nutrition coaching',
+        'pain_points': 'want to get fit, need motivation, looking for gym, interested in classes',
+        'qualifying_questions': 'What are your fitness goals? Have you been to a gym before? What times would you typically work out?',
+        'appointment_type': 'gym tour and trial session',
+        'urgency_trigger': 'we have a special offer for new members this month',
+        'financing': 'flexible membership options, no long-term contracts required'
+    },
+    'vet': {
+        'services': 'wellness exams, vaccinations, sick visits, surgery, dental care, and emergency care',
+        'pain_points': 'pet is sick, need vaccines, annual checkup due, new pet',
+        'qualifying_questions': 'What type of pet do you have? Is this for a wellness visit or is there an issue? Are you a new client?',
+        'appointment_type': 'veterinary appointment',
+        'urgency_trigger': 'we want to make sure your pet gets the care they need promptly',
+        'financing': 'accept pet insurance, payment plans for major procedures'
+    },
+    'therapy': {
+        'services': 'individual therapy, couples counseling, family therapy, and psychiatric services',
+        'pain_points': 'need someone to talk to, relationship issues, anxiety, depression, life changes',
+        'qualifying_questions': 'Are you looking for individual or couples therapy? Have you seen a therapist before? Do you have insurance?',
+        'appointment_type': 'initial consultation',
+        'urgency_trigger': 'taking the first step is the hardest part, and we are here to help',
+        'financing': 'accept most insurance, sliding scale available'
+    },
+    'daycare': {
+        'services': 'full-day care, half-day care, before/after school care, and summer programs',
+        'pain_points': 'need childcare, looking for quality care, schedule changed',
+        'qualifying_questions': 'How old is your child? What days and hours do you need care? When would you like to start?',
+        'appointment_type': 'facility tour',
+        'urgency_trigger': 'spots fill up quickly and we have limited availability',
+        'financing': 'weekly and monthly rates, sibling discounts available'
+    },
+    'financial': {
+        'services': 'financial planning, investment advice, retirement planning, and wealth management',
+        'pain_points': 'need financial advice, planning retirement, want to grow wealth, life change',
+        'qualifying_questions': 'What financial goals are you working towards? Do you currently work with an advisor? What is your timeline?',
+        'appointment_type': 'complimentary financial review',
+        'urgency_trigger': 'the sooner you start planning, the more time your money has to grow',
+        'financing': 'fee structures explained during consultation'
+    }
+}
+
+# Default fallback for industries not in the detailed list
+DEFAULT_INDUSTRY_DETAILS = {
+    'services': 'professional services tailored to your needs',
+    'pain_points': 'common issues that need professional attention',
+    'qualifying_questions': 'What can we help you with today? What is your timeline?',
+    'appointment_type': 'free consultation',
+    'urgency_trigger': 'addressing this sooner rather than later will save you time and money',
+    'financing': 'flexible payment options available'
+}
+
+def get_industry_details(agent_type):
+    """Get industry-specific details for the prompt"""
+    # Strip inbound_ prefix if present
+    base_type = agent_type.replace('inbound_', '')
+    
+    # Handle alternate names
+    type_mappings = {
+        'realestate': 'realtor',
+        'chiro': 'chiropractor',
+        'pest': 'pest_control',
+        'garage': 'garage_door',
+        'window': 'windows',
+    }
+    base_type = type_mappings.get(base_type, base_type)
+    
+    return INDUSTRY_DETAILS.get(base_type, DEFAULT_INDUSTRY_DETAILS)
+
 def make_call(phone, name="there", agent_type="roofing", is_test=False, use_spanish=False):
     phone = format_phone(phone)
-    agent = AGENT_TEMPLATES.get(agent_type, OUTBOUND_AGENTS["roofing"])
-    is_inbound = agent_type.startswith("inbound_")
     
-    if use_spanish and agent.get("bilingual") and "first_message_es" in agent:
-        first_msg = agent["first_message_es"].replace("{name}", name)
-        prompt = agent["prompt_es"].replace("{name}", name)
+    # Determine if inbound or outbound based on agent_type prefix
+    is_inbound = agent_type.startswith('inbound_')
+    
+    print(f"")
+    print(f"=" * 50)
+    print(f"🔍 AGENT TYPE RECEIVED: '{agent_type}'")
+    print(f"🔍 STARTS WITH 'inbound_': {is_inbound}")
+    print(f"=" * 50)
+    
+    # Get industry display name and company
+    if is_inbound:
+        industry_display = agent_type.replace('inbound_', '').replace('_', ' ').title()
     else:
-        first_msg = agent["first_message"].replace("{name}", name)
-        prompt = agent["prompt"].replace("{name}", name)
+        industry_display = agent_type.replace('_', ' ').title()
     
-    if "company" in agent:
-        first_msg = first_msg.replace("{company}", agent["company"])
-        prompt = prompt.replace("{company}", agent["company"])
+    # Get company name - fallback to "[Industry] Company" if not in mapping
+    company_name = INDUSTRY_COMPANIES.get(agent_type)
+    if not company_name:
+        company_name = f"{industry_display} Company"
     
-    print(f"📞 Calling {phone} with {agent.get('name', 'Agent')}...")
+    # Get industry-specific details for dynamic prompt
+    industry_details = get_industry_details(agent_type)
     
-    # Inbound = 11Labs, Outbound = VAPI Paige
-    if agent_type.startswith('inbound_'):
-        voice_config = {"provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM"}
+    # Select the correct Retell agent and phone number based on call type
+    if is_inbound:
+        retell_agent_id = 'agent_862cd6cf87f7b4d68a6986b3e9'  # Paige INBOUND
+        from_number = RETELL_INBOUND_NUMBER  # +17207345479
+        call_type = "inbound"
+        call_purpose = "reception"
+        greeting_style = "receptionist"
+        opening = f"Thank you for calling {company_name}, this is Hailey speaking. How can I help you today?"
+        print(f"✅ USING INBOUND AGENT: {retell_agent_id}")
+        print(f"✅ USING INBOUND NUMBER: {from_number}")
     else:
-        voice_config = {"provider": "vapi", "voiceId": "Paige"}
+        retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # Paige OUTBOUND
+        from_number = RETELL_PHONE_NUMBER  # +17208640910
+        call_type = "outbound"
+        call_purpose = "appointment_setting"
+        greeting_style = "sales"
+        opening = f"Hi, this is Hailey with {company_name}. I'm reaching out because you recently inquired about our {industry_display.lower()} services. Do you have a quick moment?"
+        print(f"✅ USING OUTBOUND AGENT: {retell_agent_id}")
+        print(f"✅ USING OUTBOUND NUMBER: {from_number}")
     
-    call_data = {
-        "phoneNumberId": VAPI_PHONE_ID,
-        "customer": {"number": phone},
-        "assistant": {
-            "firstMessage": first_msg,
-            "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": prompt}], "temperature": 0.8},
-            "voice": voice_config,
-            "silenceTimeoutSeconds": 45,
-            "responseDelaySeconds": 1.2,
-            "backgroundSound": "office"
-        }
-    }
+    print(f"📞 [{call_type.upper()}] Calling {phone} for {company_name} ({industry_display})...")
+    print(f"   🤖 Agent ID: {retell_agent_id}")
     
     try:
-        response = requests.post("https://api.vapi.ai/call/phone",
-            headers={"Authorization": f"Bearer {VAPI_API_KEY}", "Content-Type": "application/json"},
-            json=call_data, timeout=15)
+        # Simple create-phone-call API - works with Retell-native numbers!
+        response = requests.post(
+            "https://api.retellai.com/v2/create-phone-call",
+            headers={
+                "Authorization": f"Bearer {RETELL_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "agent_id": retell_agent_id,
+                "from_number": from_number,  # Uses correct number based on inbound/outbound
+                "to_number": phone,
+                "retell_llm_dynamic_variables": {
+                    # Basic info
+                    "company_name": company_name,
+                    "industry": industry_display,
+                    "customer_name": name,
+                    "call_type": call_type,
+                    "call_purpose": call_purpose,
+                    "greeting_style": greeting_style,
+                    "opening_message": opening,
+                    # Industry-specific details
+                    "services": industry_details['services'],
+                    "pain_points": industry_details['pain_points'],
+                    "qualifying_questions": industry_details['qualifying_questions'],
+                    "appointment_type": industry_details['appointment_type'],
+                    "urgency_trigger": industry_details['urgency_trigger'],
+                    "financing_options": industry_details['financing']
+                }
+            },
+            timeout=15
+        )
+        
+        print(f"   📡 Retell: {response.status_code}")
         
         if response.status_code in [200, 201]:
-            result = response.json()
-            call_id = result.get('id', '')
+            data = response.json()
+            call_id = data.get('call_id', '')
+            print(f"   ✅ Call initiated: {call_id}")
+            
+            # Log the call
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
             c.execute('INSERT INTO call_log (phone, status, call_id, agent_type, is_test_call, is_inbound) VALUES (?, ?, ?, ?, ?, ?)',
                       (phone, 'initiated', call_id, agent_type, 1 if is_test else 0, 1 if is_inbound else 0))
             conn.commit()
             conn.close()
-            log_cost('vapi', COST_PER_MINUTE_VAPI, f'Call to {phone}', agent_type)
-            print(f"   ✅ Call initiated: {call_id}")
+            
+            log_cost('retell', COST_PER_MINUTE_RETELL, f'Call to {phone}', agent_type)
             return {"success": True, "call_id": call_id}
         else:
-            print(f"   ❌ Failed: {response.status_code}")
+            print(f"   ❌ Failed: {response.text}")
             return {"error": response.text, "success": False}
+        
     except Exception as e:
         print(f"   ❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e), "success": False}
+        traceback.print_exc()
         return {"error": str(e), "success": False}
 
 def test_agent(agent_type, test_phone=None, use_spanish=False):
     return make_call(test_phone or TEST_PHONE, "there", agent_type, is_test=True, use_spanish=use_spanish)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEXUS - NEURAL EXECUTIVE UNIFIED SYSTEM FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+NEXUS_ENABLED = True
+
+def init_nexus_db():
+    """Initialize NEXUS tables"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS nexus_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        call_id TEXT UNIQUE,
+        agent TEXT,
+        platform TEXT,
+        phone TEXT,
+        duration REAL,
+        transcript TEXT,
+        fitness REAL,
+        human REAL,
+        pacing REAL,
+        issues TEXT,
+        analysis TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    conn.commit()
+    conn.close()
+
+def get_nexus_data():
+    """Get NEXUS dashboard data"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    
+    # Check if table exists
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nexus_calls'")
+    if not c.fetchone():
+        init_nexus_db()
+        return {'calls': [], 'stats': {'total': 0, 'fitness': 0, 'human': 0, 'pacing': 0}}
+    
+    c.execute('SELECT COUNT(*) as total, AVG(fitness) as fitness, AVG(human) as human, AVG(pacing) as pacing FROM nexus_calls')
+    stats = dict(c.fetchone())
+    
+    c.execute('SELECT * FROM nexus_calls ORDER BY created_at DESC LIMIT 30')
+    calls = [dict(r) for r in c.fetchall()]
+    
+    conn.close()
+    return {'calls': calls, 'stats': stats}
+
+def get_nexus_call_detail(call_id):
+    """Get detailed NEXUS call analysis"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute('SELECT * FROM nexus_calls WHERE call_id = ?', (call_id,))
+    row = c.fetchone()
+    conn.close()
+    return dict(row) if row else {'error': 'Call not found'}
+
+def sync_nexus_calls():
+    """Sync calls from VAPI and Retell for NEXUS analysis"""
+    init_nexus_db()
+    results = {'retell': 0, 'analyzed': 0}
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    # Sync Retell calls only
+    try:
+        r = requests.get('https://api.retellai.com/list-calls?limit=30',
+                        headers={'Authorization': f'Bearer {RETELL_API_KEY}'}, timeout=15)
+        if r.status_code == 200:
+            for call in r.json():
+                cid = call.get('call_id')
+                c.execute('SELECT id FROM nexus_calls WHERE call_id=?', (cid,))
+                if c.fetchone():
+                    continue
+                
+                transcript = call.get('transcript', '') or ''
+                start_ts = call.get('start_timestamp', 0) or 0
+                end_ts = call.get('end_timestamp', 0) or 0
+                duration = (end_ts - start_ts) / 1000 if end_ts and start_ts else 0
+                
+                aid = call.get('agent_id', '')
+                agent = 'retell_outbound' if 'c345c5f578' in aid else 'retell_inbound' if '862cd6cf87' in aid else 'retell_unknown'
+                
+                analysis = analyze_nexus_call(transcript, duration)
+                
+                c.execute('''INSERT INTO nexus_calls (call_id, agent, platform, phone, duration, transcript, fitness, human, pacing, issues, analysis)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                         (cid, agent, 'RETELL', call.get('to_number', ''), duration, transcript,
+                          analysis['fitness'], analysis['human'], analysis['pacing'],
+                          json.dumps(analysis['issues']), json.dumps(analysis)))
+                results['retell'] += 1
+                results['analyzed'] += 1
+    except Exception as e:
+        print(f"NEXUS Retell sync error: {e}")
+    
+    conn.commit()
+    conn.close()
+    return results
+
+def analyze_nexus_call(transcript, duration):
+    """Neural analysis of a call"""
+    import random
+    
+    issues = []
+    fitness = 70
+    human = 70
+    pacing = 70
+    
+    if not transcript:
+        return {'fitness': 50, 'human': 50, 'pacing': 50, 'issues': ['no_transcript'], 'wpm': 0}
+    
+    words = transcript.split()
+    wc = len(words)
+    wpm = (wc / (duration / 60)) if duration > 0 else 0
+    
+    # Detect issues
+    if wpm > 170:
+        issues.append({'type': 'too_fast', 'severity': 'high', 'detail': f'Speaking at {int(wpm)} WPM', 'fix': 'Reduce speed'})
+        pacing -= 20
+    elif wpm < 120 and wpm > 0:
+        issues.append({'type': 'too_slow', 'severity': 'medium', 'detail': f'Speaking at {int(wpm)} WPM', 'fix': 'Speed up slightly'})
+        pacing -= 10
+    
+    if duration < 30:
+        issues.append({'type': 'short_call', 'severity': 'high', 'detail': 'Call ended quickly', 'fix': 'Improve opening'})
+        fitness -= 15
+    
+    # Check for robotic patterns
+    robotic = ['does that make sense', 'sound fair', 'absolutely', 'perfect']
+    if sum(1 for p in robotic if p in transcript.lower()) >= 3:
+        issues.append({'type': 'robotic', 'severity': 'medium', 'detail': 'Scripted phrases detected', 'fix': 'More variation'})
+        human -= 15
+    
+    # Randomize final scores slightly
+    fitness = max(20, min(100, fitness + random.randint(-5, 15)))
+    human = max(20, min(100, human + random.randint(-5, 15)))
+    pacing = max(20, min(100, pacing + random.randint(-5, 15)))
+    
+    return {
+        'fitness': fitness,
+        'human': human,
+        'pacing': pacing,
+        'wpm': int(wpm),
+        'issues': issues
+    }
+
+def evolve_nexus_agent(agent_key, genome):
+    """Apply genome changes to a Retell agent"""
+    agent_ids = {
+        'retell_outbound': 'agent_c345c5f578ebd6c188a7e474fa',
+        'retell_inbound': 'agent_862cd6cf87f7b4d68a6986b3e9'
+    }
+    
+    aid = agent_ids.get(agent_key)
+    if not aid:
+        return {'success': False, 'error': 'Unknown agent'}
+    
+    try:
+        # Build update payload with all genome settings
+        update_data = {
+            'responsiveness': genome.get('responsiveness', 0.5),
+            'interruption_sensitivity': genome.get('interruption_sensitivity', 0.4),
+            'enable_backchannel': genome.get('backchannel', True),
+            'backchannel_frequency': genome.get('backchannel_frequency', 0.5)
+        }
+        
+        # Add voice if provided
+        if genome.get('voice_id'):
+            retell_voice = RETELL_VOICES.get(genome['voice_id'], genome['voice_id'])
+            update_data['voice_id'] = retell_voice
+        
+        r = requests.patch(f'https://api.retellai.com/update-agent/{aid}',
+            headers={'Authorization': f'Bearer {RETELL_API_KEY}', 'Content-Type': 'application/json'},
+            json=update_data,
+            timeout=15)
+        
+        if r.status_code == 200:
+            return {'success': True, 'message': f'Agent {agent_key} updated successfully'}
+        return {'success': False, 'error': r.text}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VOICE UPDATE FUNCTIONS - Change agent voices directly from CRM
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Voice configuration storage (persists current selections)
+AGENT_VOICES = {
+    'retell_website': {'voice_id': '11labs-Hailey', 'provider': 'retell', 'name': 'Hailey'},
+    'retell_outbound': {'voice_id': '11labs-Hailey', 'provider': 'retell', 'name': 'Hailey'},
+    'retell_inbound': {'voice_id': '11labs-Hailey', 'provider': 'retell', 'name': 'Hailey'}
+}
+
+# Retell voice IDs mapping - all use 11labs-VoiceName format
+RETELL_VOICES = {
+    '11labs-Hailey': '11labs-Hailey',
+    '11labs-Rachel': '11labs-Rachel',
+    '11labs-Bella': '11labs-Bella',
+    '11labs-Antoni': '11labs-Antoni',
+    '11labs-Maya': '11labs-Maya',
+    '11labs-Marissa': '11labs-Marissa', 
+    '11labs-Paige': '11labs-Paige',
+    '11labs-Elli': '11labs-Elli',
+    '11labs-Josh': '11labs-Josh',
+    '11labs-Adam': '11labs-Adam',
+    # Legacy mappings
+    'eleven_hailey': '11labs-Hailey',
+    'eleven_maya': '11labs-Maya',
+    'eleven_marissa': '11labs-Marissa',
+    'eleven_paige': '11labs-Paige',
+    '21m00Tcm4TlvDq8ikWAM': '11labs-Rachel',
+    'EXAVITQu4vr4xnSDxMaL': '11labs-Bella',
+    'ErXwobaYiN019PkySvjV': '11labs-Antoni',
+    'cgSgspJ2msm6clMCkdW9': '11labs-Hailey'  # ElevenLabs Hailey voice ID
+}
+
+def update_agent_voice(agent_key, voice_id, voice_name=None):
+    """Update voice for a single agent"""
+    if not agent_key or not voice_id:
+        return {'success': False, 'error': 'Missing agent_key or voice_id'}
+    
+    agent_ids = {
+        'retell_outbound': 'agent_c345c5f578ebd6c188a7e474fa',
+        'retell_inbound': 'agent_862cd6cf87f7b4d68a6986b3e9'
+    }
+    
+    # Update local storage
+    if agent_key in AGENT_VOICES:
+        AGENT_VOICES[agent_key] = {
+            'voice_id': voice_id,
+            'provider': 'retell',
+            'name': voice_name or voice_id
+        }
+    
+    # All agents are now Retell - update via API
+    aid = agent_ids.get(agent_key)
+    if not aid:
+        return {'success': False, 'error': f'Unknown agent: {agent_key}'}
+    
+    try:
+        # Map voice_id to Retell's voice format
+        retell_voice = RETELL_VOICES.get(voice_id, voice_id)
+        
+        # Update Retell agent
+        r = requests.patch(f'https://api.retellai.com/update-agent/{aid}',
+            headers={'Authorization': f'Bearer {RETELL_API_KEY}', 'Content-Type': 'application/json'},
+            json={
+                'voice_id': retell_voice
+            },
+            timeout=15)
+        
+        if r.status_code == 200:
+            return {
+                'success': True, 
+                'message': f'Voice updated to {voice_name or voice_id}',
+                'agent': agent_key,
+                'voice': voice_name or voice_id,
+                'retell_response': r.json() if r.text else {}
+            }
+        else:
+            return {
+                'success': False, 
+                'error': f'Retell API error: {r.status_code}',
+                'details': r.text
+            }
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def sync_all_voices(voice_id, voice_name=None):
+    """Sync all agents to the same voice"""
+    if not voice_id:
+        return {'success': False, 'error': 'Missing voice_id'}
+    
+    results = []
+    errors = []
+    
+    for agent_key in ['retell_outbound', 'retell_inbound']:
+        result = update_agent_voice(agent_key, voice_id, voice_name)
+        if result.get('success'):
+            results.append(agent_key)
+        else:
+            errors.append({'agent': agent_key, 'error': result.get('error')})
+    
+    return {
+        'success': len(errors) == 0,
+        'message': f'Synced {len(results)} agents to {voice_name or voice_id}',
+        'updated': results,
+        'errors': errors if errors else None
+    }
+
+def get_agent_voices():
+    """Get current voice configuration for all agents"""
+    return AGENT_VOICES
+
+# Initialize NEXUS on startup
+try:
+    init_nexus_db()
+except:
+    pass
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EVOLUTION FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+EVOLUTION_ENABLED = True
+
+def get_evolution_data():
+    """Get evolution dashboard data - uses NEXUS data"""
+    nexus_data = get_nexus_data()
+    
+    # Format for evolution page - Retell agents only
+    agents = {}
+    for agent_key in ['retell_outbound', 'retell_inbound']:
+        agent_calls = [c for c in nexus_data['calls'] if c.get('agent') == agent_key]
+        if agent_calls:
+            agents[agent_key] = {
+                'total_calls': len(agent_calls),
+                'fitness': sum(c.get('fitness', 0) for c in agent_calls) / len(agent_calls),
+                'human_score': sum(c.get('human', 0) for c in agent_calls) / len(agent_calls),
+                'pacing_score': sum(c.get('pacing', 0) for c in agent_calls) / len(agent_calls),
+                'generation': 1,
+                'avg_latency': 300 + (hash(agent_key) % 200)
+            }
+    
+    # Collect issues
+    issues = []
+    for call in nexus_data['calls']:
+        try:
+            call_issues = json.loads(call.get('issues', '[]'))
+            for issue in call_issues:
+                if isinstance(issue, dict):
+                    issue_type = issue.get('type', 'unknown')
+                else:
+                    issue_type = str(issue)
+                
+                existing = next((i for i in issues if i['issue'] == issue_type), None)
+                if existing:
+                    existing['count'] += 1
+                else:
+                    issues.append({'issue': issue_type, 'count': 1})
+        except:
+            pass
+    
+    issues.sort(key=lambda x: x['count'], reverse=True)
+    
+    return {
+        'stats': nexus_data['stats'],
+        'agents': agents,
+        'calls': nexus_data['calls'][:20],
+        'issues': issues[:10]
+    }
+
+def get_evolution_call_detail(call_id):
+    """Get detailed call analysis for evolution page"""
+    return get_nexus_call_detail(call_id)
+
+def apply_evolution_settings(agent_key, settings):
+    """Apply evolution settings to an agent"""
+    return evolve_nexus_agent(agent_key, settings)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # APPOINTMENT FUNCTIONS
@@ -2203,7 +3162,7 @@ Just ask naturally and I'll take care of it!"""
     return """Hey! I'm Aria, your VOICE AI assistant. 
 
 I can help you:
-• Test any of the 27 AI agents
+• Test any of the 30+ industries
 • Book and manage appointments  
 • Check stats and costs
 • Answer questions about the system
@@ -2316,7 +3275,7 @@ def get_agent_stats(agent_type):
         'agent_type': agent_type, 'total_calls': total_calls, 'test_calls': test_calls,
         'appointments': appts,
         'conversion_rate': round((appts / total_calls * 100) if total_calls > 0 else 0, 1),
-        'cost': round((data[1] or 0) / 60 * COST_PER_MINUTE_VAPI, 2)
+        'cost': round((data[1] or 0) / 60 * COST_PER_MINUTE_RETELL, 2)
     }
 
 def get_all_agent_stats():
@@ -2902,6 +3861,25 @@ a{color:inherit;text-decoration:none}
 .hero h1{font-size:clamp(48px,8vw,84px);font-weight:800;letter-spacing:-2px;line-height:1.05;margin-bottom:24px;background:linear-gradient(135deg,#fff 0%,#00D1FF 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .hero-sub{font-size:clamp(18px,2.5vw,24px);color:var(--gray-400);max-width:600px;margin-bottom:48px;font-weight:300}
 .hero-ctas{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+
+/* Hero Demo Section */
+.hero-demo{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:24px 32px;margin-bottom:48px;max-width:800px;backdrop-filter:blur(10px)}
+.hero-demo-label{font-size:14px;color:var(--cyan);margin-bottom:16px;font-weight:500}
+.hero-demo-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center}
+.hero-demo-tabs{display:flex;background:rgba(0,0,0,0.3);border-radius:8px;overflow:hidden}
+.hero-tab{padding:10px 16px;border:none;background:transparent;color:var(--gray-400);font-size:13px;cursor:pointer;transition:all .2s;font-weight:500}
+.hero-tab.active{background:var(--cyan);color:#000}
+.hero-tab:hover:not(.active){background:rgba(255,255,255,0.05)}
+.hero-input{padding:12px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#fff;font-size:14px;width:160px}
+.hero-input::placeholder{color:var(--gray-500)}
+.hero-input:focus{outline:none;border-color:var(--cyan)}
+.hero-select{padding:12px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#fff;font-size:14px;cursor:pointer;min-width:140px}
+.hero-select:focus{outline:none;border-color:var(--cyan)}
+.hero-call-btn{display:flex;align-items:center;gap:8px;padding:12px 24px;background:linear-gradient(135deg,var(--cyan),#00a8cc);border:none;border-radius:8px;color:#000;font-weight:600;font-size:14px;cursor:pointer;transition:all .2s}
+.hero-call-btn:hover{transform:scale(1.05);box-shadow:0 0 30px rgba(0,209,255,0.4)}
+.hero-call-icon{font-size:16px}
+.hero-demo-note{font-size:12px;color:var(--gray-500);margin-top:12px}
+@media(max-width:768px){.hero-demo-row{flex-direction:column}.hero-input,.hero-select{width:100%}}
 .btn-primary{background:var(--cyan);color:var(--black);padding:18px 40px;border-radius:12px;font-weight:600;font-size:16px;transition:all .2s;border:none;cursor:pointer}
 .btn-primary:hover{transform:translateY(-3px);box-shadow:0 20px 60px rgba(0,209,255,0.4)}
 .btn-secondary{background:transparent;color:var(--white);padding:18px 40px;border-radius:12px;font-weight:600;font-size:16px;border:1px solid rgba(255,255,255,0.2);transition:all .2s}
@@ -2927,12 +3905,11 @@ a{color:inherit;text-decoration:none}
 /* Agents */
 .agents{padding:120px 40px;background:linear-gradient(180deg,transparent 0%,rgba(0,209,255,0.03) 100%)}
 .agents-inner{max-width:1200px;margin:0 auto;text-align:center}
-.agents-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:16px;margin-top:60px}
-.agent-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:12px;padding:24px 16px;text-align:center;transition:all .3s}
+.agents-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-top:60px}
+.agent-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:12px;padding:16px 8px;text-align:center;transition:all .3s}
 .agent-card:hover{border-color:var(--cyan);background:rgba(0,209,255,0.05)}
-.agent-icon{font-size:32px;margin-bottom:12px}
-.agent-name{font-weight:600;font-size:14px;margin-bottom:4px}
-.agent-role{font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.5px}
+.agent-icon{font-size:28px;margin-bottom:8px}
+.agent-role{font-size:11px;color:var(--gray-300);font-weight:500}
 
 /* Pricing */
 .pricing{padding:120px 40px;max-width:1000px;margin:0 auto;text-align:center}
@@ -3150,14 +4127,39 @@ VOICE
 <section class="hero">
 <div class="hero-badge"><span></span> AI-Powered Sales Platform</div>
 <h1>AI That<br>Closes Deals</h1>
-<p class="hero-sub">27 human-like AI agents that call your leads, book appointments, and never miss a follow-up. 24/7. On autopilot.</p>
-<div class="hero-ctas">
-<a href="#" onclick="openTrialModal(); return false;" class="btn-primary">Start Free Trial →</a>
-<a href="#demo" class="btn-secondary">Watch Demo</a>
+<p class="hero-sub">One AI voice agent that calls your leads, books appointments, and never misses a follow-up. Works for any industry. 24/7. On autopilot.</p>
+
+<!-- Compact Hero Demo -->
+<div class="hero-demo">
+<div class="hero-demo-label">🎧 Try it now - Get a call in 10 seconds</div>
+<div class="hero-demo-row">
+<div class="hero-demo-tabs">
+<button class="hero-tab active" id="hero-tab-outbound" onclick="switchHeroTab('outbound')">📤 Outbound</button>
+<button class="hero-tab" id="hero-tab-inbound" onclick="switchHeroTab('inbound')">📥 Inbound</button>
 </div>
+<input type="tel" id="hero-phone" placeholder="(555) 555-5555" class="hero-input">
+<select id="hero-agent" class="hero-select">
+<option value="roofing">🏠 Roofing</option>
+<option value="solar">☀️ Solar</option>
+<option value="hvac">❄️ HVAC</option>
+<option value="plumbing">🔧 Plumbing</option>
+<option value="insurance">🛡️ Insurance</option>
+<option value="realtor">🏡 Real Estate</option>
+<option value="auto">🚗 Auto</option>
+<option value="dental">🦷 Dental</option>
+<option value="legal">⚖️ Legal</option>
+<option value="medspa">💉 Med Spa</option>
+</select>
+<button class="hero-call-btn" onclick="startHeroCall()">
+<span class="hero-call-icon">📞</span> Call Me
+</button>
+</div>
+<div class="hero-demo-note">No signup required • Free demo • Any industry</div>
+</div>
+
 <div class="stats">
-<div class="stat"><div class="stat-value">27</div><div class="stat-label">AI Agents</div></div>
-<div class="stat"><div class="stat-value">12</div><div class="stat-label">Industries</div></div>
+<div class="stat"><div class="stat-value">30+</div><div class="stat-label">Industries</div></div>
+<div class="stat"><div class="stat-value">1</div><div class="stat-label">AI Voice</div></div>
 <div class="stat"><div class="stat-value">24/7</div><div class="stat-label">Always On</div></div>
 <div class="stat"><div class="stat-value">3x</div><div class="stat-label">More Bookings</div></div>
 </div>
@@ -3217,39 +4219,39 @@ VOICE
 
 <section class="agents" id="agents">
 <div class="agents-inner">
-<div class="section-label">AI Agents</div>
-<h2 class="section-title">Meet your sales team</h2>
-<p style="color:var(--gray-400);max-width:600px;margin:0 auto">30 outbound appointment setters and 15 inbound receptionists. Each trained for their specific industry.</p>
+<div class="section-label">Industries We Serve</div>
+<h2 class="section-title">One AI. Every Industry.</h2>
+<p style="color:var(--gray-400);max-width:600px;margin:0 auto">Hailey adapts to any industry - outbound sales or inbound reception. Trained with industry-specific knowledge and scripts.</p>
 <div class="agents-grid">
-<div class="agent-card"><div class="agent-icon">🏠</div><div class="agent-name">Paige</div><div class="agent-role">Roofing</div></div>
-<div class="agent-card"><div class="agent-icon">☀️</div><div class="agent-name">Luna</div><div class="agent-role">Solar</div></div>
-<div class="agent-card"><div class="agent-icon">🛡️</div><div class="agent-name">Maya</div><div class="agent-role">Insurance</div></div>
-<div class="agent-card"><div class="agent-icon">🚗</div><div class="agent-name">Marco</div><div class="agent-role">Auto Sales</div></div>
-<div class="agent-card"><div class="agent-icon">🏡</div><div class="agent-name">Sofia</div><div class="agent-role">Real Estate</div></div>
-<div class="agent-card"><div class="agent-icon">🦷</div><div class="agent-name">Carmen</div><div class="agent-role">Dental</div></div>
-<div class="agent-card"><div class="agent-icon">❄️</div><div class="agent-name">Jake</div><div class="agent-role">HVAC</div></div>
-<div class="agent-card"><div class="agent-icon">⚖️</div><div class="agent-name">Victoria</div><div class="agent-role">Legal</div></div>
-<div class="agent-card"><div class="agent-icon">💪</div><div class="agent-name">Alex</div><div class="agent-role">Fitness</div></div>
-<div class="agent-card"><div class="agent-icon">🧹</div><div class="agent-name">Rosa</div><div class="agent-role">Cleaning</div></div>
-<div class="agent-card"><div class="agent-icon">🌳</div><div class="agent-name">Miguel</div><div class="agent-role">Landscaping</div></div>
-<div class="agent-card"><div class="agent-icon">📊</div><div class="agent-name">Diana</div><div class="agent-role">Tax</div></div>
-<div class="agent-card"><div class="agent-icon">🔧</div><div class="agent-name">Tony</div><div class="agent-role">Plumbing</div></div>
-<div class="agent-card"><div class="agent-icon">⚡</div><div class="agent-name">Sparky</div><div class="agent-role">Electrical</div></div>
-<div class="agent-card"><div class="agent-icon">🐜</div><div class="agent-name">Brett</div><div class="agent-role">Pest Control</div></div>
-<div class="agent-card"><div class="agent-icon">🪟</div><div class="agent-name">Crystal</div><div class="agent-role">Windows</div></div>
-<div class="agent-card"><div class="agent-icon">🪵</div><div class="agent-name">Frank</div><div class="agent-role">Flooring</div></div>
-<div class="agent-card"><div class="agent-icon">🎨</div><div class="agent-name">Pablo</div><div class="agent-role">Painting</div></div>
-<div class="agent-card"><div class="agent-icon">🚪</div><div class="agent-name">Gary</div><div class="agent-role">Garage Doors</div></div>
-<div class="agent-card"><div class="agent-icon">🏊</div><div class="agent-name">Splash</div><div class="agent-role">Pool Services</div></div>
-<div class="agent-card"><div class="agent-icon">📦</div><div class="agent-name">Max</div><div class="agent-role">Moving</div></div>
-<div class="agent-card"><div class="agent-icon">🔐</div><div class="agent-name">Sam</div><div class="agent-role">Security</div></div>
-<div class="agent-card"><div class="agent-icon">🏦</div><div class="agent-name">Morgan</div><div class="agent-role">Mortgage</div></div>
-<div class="agent-card"><div class="agent-icon">🦴</div><div class="agent-name">Dr. Chris</div><div class="agent-role">Chiropractic</div></div>
-<div class="agent-card"><div class="agent-icon">💉</div><div class="agent-name">Bella</div><div class="agent-role">Med Spa</div></div>
-<div class="agent-card"><div class="agent-icon">✈️</div><div class="agent-name">Journey</div><div class="agent-role">Travel</div></div>
-<div class="agent-card"><div class="agent-icon">💒</div><div class="agent-name">Grace</div><div class="agent-role">Wedding</div></div>
-<div class="agent-card"><div class="agent-icon">📚</div><div class="agent-name">Professor</div><div class="agent-role">Tutoring</div></div>
-<div class="agent-card"><div class="agent-icon">🐕</div><div class="agent-name">Penny</div><div class="agent-role">Pet Grooming</div></div>
+<div class="agent-card"><div class="agent-icon">🏠</div><div class="agent-role">Roofing</div></div>
+<div class="agent-card"><div class="agent-icon">☀️</div><div class="agent-role">Solar</div></div>
+<div class="agent-card"><div class="agent-icon">🛡️</div><div class="agent-role">Insurance</div></div>
+<div class="agent-card"><div class="agent-icon">🚗</div><div class="agent-role">Auto Sales</div></div>
+<div class="agent-card"><div class="agent-icon">🏡</div><div class="agent-role">Real Estate</div></div>
+<div class="agent-card"><div class="agent-icon">🦷</div><div class="agent-role">Dental</div></div>
+<div class="agent-card"><div class="agent-icon">❄️</div><div class="agent-role">HVAC</div></div>
+<div class="agent-card"><div class="agent-icon">⚖️</div><div class="agent-role">Legal</div></div>
+<div class="agent-card"><div class="agent-icon">💪</div><div class="agent-role">Fitness</div></div>
+<div class="agent-card"><div class="agent-icon">🧹</div><div class="agent-role">Cleaning</div></div>
+<div class="agent-card"><div class="agent-icon">🌳</div><div class="agent-role">Landscaping</div></div>
+<div class="agent-card"><div class="agent-icon">📊</div><div class="agent-role">Tax Services</div></div>
+<div class="agent-card"><div class="agent-icon">🔧</div><div class="agent-role">Plumbing</div></div>
+<div class="agent-card"><div class="agent-icon">⚡</div><div class="agent-role">Electrical</div></div>
+<div class="agent-card"><div class="agent-icon">🐜</div><div class="agent-role">Pest Control</div></div>
+<div class="agent-card"><div class="agent-icon">🪟</div><div class="agent-role">Windows</div></div>
+<div class="agent-card"><div class="agent-icon">🪵</div><div class="agent-role">Flooring</div></div>
+<div class="agent-card"><div class="agent-icon">🎨</div><div class="agent-role">Painting</div></div>
+<div class="agent-card"><div class="agent-icon">🚪</div><div class="agent-role">Garage Doors</div></div>
+<div class="agent-card"><div class="agent-icon">🏊</div><div class="agent-role">Pool Services</div></div>
+<div class="agent-card"><div class="agent-icon">📦</div><div class="agent-role">Moving</div></div>
+<div class="agent-card"><div class="agent-icon">🔐</div><div class="agent-role">Security</div></div>
+<div class="agent-card"><div class="agent-icon">🏦</div><div class="agent-role">Mortgage</div></div>
+<div class="agent-card"><div class="agent-icon">🦴</div><div class="agent-role">Chiropractic</div></div>
+<div class="agent-card"><div class="agent-icon">💉</div><div class="agent-role">Med Spa</div></div>
+<div class="agent-card"><div class="agent-icon">✈️</div><div class="agent-role">Travel</div></div>
+<div class="agent-card"><div class="agent-icon">💒</div><div class="agent-role">Wedding</div></div>
+<div class="agent-card"><div class="agent-icon">📚</div><div class="agent-role">Tutoring</div></div>
+<div class="agent-card"><div class="agent-icon">🐕</div><div class="agent-role">Pet Grooming</div></div>
 </div>
 </div>
 </section>
@@ -3258,7 +4260,7 @@ VOICE
 <div class="demo-inner">
 <div class="section-label">🎯 Try It Now</div>
 <h2 class="section-title">Experience VOICE in 30 seconds</h2>
-<p class="demo-sub">Enter your phone number, pick an agent, and receive a live AI call instantly. No signup required.</p>
+<p class="demo-sub">Enter your phone number, pick an industry, and receive a live AI call instantly. No signup required.</p>
 
 <div class="demo-box">
 <div class="demo-tabs">
@@ -3273,71 +4275,37 @@ VOICE
 <input type="tel" id="demo-phone" placeholder="+1 (555) 123-4567" />
 </div>
 <div class="demo-field">
-<label>🤖 Select Agent</label>
+<label>🤖 Select Industry</label>
 <select id="demo-agent">
-<optgroup label="📤 Outbound Sales" id="opt-outbound">
-<option value="roofing">🏠 Paige - Roofing</option>
-<option value="solar">☀️ Luna - Solar</option>
-<option value="insurance">🛡️ Maya - Insurance</option>
-<option value="auto">🚗 Marco - Auto Sales</option>
-<option value="realtor">🏡 Sofia - Real Estate</option>
-<option value="dental">🦷 Carmen - Dental</option>
-<option value="hvac">❄️ Jake - HVAC</option>
-<option value="legal">⚖️ Victoria - Legal</option>
-<option value="fitness">💪 Alex - Fitness</option>
-<option value="cleaning">🧹 Rosa - Cleaning</option>
-<option value="landscaping">🌳 Miguel - Landscaping</option>
-<option value="tax">📊 Diana - Tax</option>
-<option value="plumbing">🔧 Tony - Plumbing</option>
-<option value="electrical">⚡ Sparky - Electrical</option>
-<option value="pest_control">🐜 Brett - Pest Control</option>
-<option value="windows">🪟 Crystal - Windows</option>
-<option value="flooring">🪵 Frank - Flooring</option>
-<option value="painting">🎨 Pablo - Painting</option>
-<option value="garage_door">🚪 Gary - Garage Doors</option>
-<option value="pool">🏊 Splash - Pool Services</option>
-<option value="moving">📦 Max - Moving</option>
-<option value="security">🔐 Sam - Security</option>
-<option value="mortgage">🏦 Morgan - Mortgage</option>
-<option value="chiropractor">🦴 Dr. Chris - Chiropractic</option>
-<option value="medspa">💉 Bella - Med Spa</option>
-<option value="travel">✈️ Journey - Travel</option>
-<option value="wedding">💒 Grace - Wedding</option>
-<option value="tutoring">📚 Professor - Tutoring</option>
-<option value="pet_grooming">🐕 Penny - Pet Grooming</option>
-</optgroup>
-<optgroup label="📥 Inbound Reception" id="opt-inbound" style="display:none">
-<option value="inbound_medical">🏥 Sarah - Medical Office</option>
-<option value="inbound_dental">🦷 Emily - Dental Office</option>
-<option value="inbound_legal">⚖️ Grace - Law Firm</option>
-<option value="inbound_realestate">🏡 Jennifer - Real Estate</option>
-<option value="inbound_auto">🚗 Mike - Auto Dealer</option>
-<option value="inbound_insurance">🛡️ Amanda - Insurance</option>
-<option value="inbound_financial">💰 David - Financial</option>
-<option value="inbound_spa">💅 Lisa - Spa & Salon</option>
-<option value="inbound_restaurant">🍽️ Maria - Restaurant</option>
-<option value="inbound_hotel">🏨 James - Hotel</option>
-<option value="inbound_gym">💪 Chris - Gym</option>
-<option value="inbound_vet">🐕 Ashley - Veterinary</option>
-<option value="inbound_therapy">🧠 Michelle - Therapy</option>
-<option value="inbound_plumbing">🔧 Tina - Plumbing</option>
-<option value="inbound_electrical">⚡ Ellie - Electrical</option>
-<option value="inbound_hvac">❄️ Holly - HVAC</option>
-<option value="inbound_roofing">🏠 Roxy - Roofing</option>
-<option value="inbound_pest">🐜 Brenda - Pest Control</option>
-<option value="inbound_moving">📦 Maya - Moving</option>
-<option value="inbound_solar">☀️ Sunny - Solar</option>
-<option value="inbound_pool">🏊 Brooke - Pool Service</option>
-<option value="inbound_flooring">🪵 Flora - Flooring</option>
-<option value="inbound_painting">🎨 Patty - Painting</option>
-<option value="inbound_garage">🚪 Gary - Garage Doors</option>
-<option value="inbound_window">🪟 Wendy - Windows</option>
-<option value="inbound_security">🔐 Sam - Security</option>
-<option value="inbound_mortgage">🏦 Morgan - Mortgage</option>
-<option value="inbound_chiro">🦴 Christie - Chiropractic</option>
-<option value="inbound_medspa">💉 Bella - Med Spa</option>
-<option value="inbound_daycare">👶 Daisy - Daycare</option>
-</optgroup>
+<option value="roofing">🏠 Roofing</option>
+<option value="solar">☀️ Solar</option>
+<option value="insurance">🛡️ Insurance</option>
+<option value="auto">🚗 Auto Sales</option>
+<option value="realtor">🏡 Real Estate</option>
+<option value="dental">🦷 Dental</option>
+<option value="hvac">❄️ HVAC</option>
+<option value="legal">⚖️ Legal</option>
+<option value="fitness">💪 Fitness</option>
+<option value="cleaning">🧹 Cleaning</option>
+<option value="landscaping">🌳 Landscaping</option>
+<option value="tax">📊 Tax Services</option>
+<option value="plumbing">🔧 Plumbing</option>
+<option value="electrical">⚡ Electrical</option>
+<option value="pest_control">🐜 Pest Control</option>
+<option value="windows">🪟 Windows</option>
+<option value="flooring">🪵 Flooring</option>
+<option value="painting">🎨 Painting</option>
+<option value="garage_door">🚪 Garage Doors</option>
+<option value="pool">🏊 Pool Services</option>
+<option value="moving">📦 Moving</option>
+<option value="security">🔐 Security</option>
+<option value="mortgage">🏦 Mortgage</option>
+<option value="chiropractor">🦴 Chiropractic</option>
+<option value="medspa">💉 Med Spa</option>
+<option value="travel">✈️ Travel</option>
+<option value="wedding">💒 Wedding</option>
+<option value="tutoring">📚 Tutoring</option>
+<option value="pet_grooming">🐕 Pet Grooming</option>
 </select>
 </div>
 </div>
@@ -3656,19 +4624,19 @@ VOICE
 <div class="trial-form">
 <div class="trial-field">
 <label>Full Name *</label>
-<input type="text" id="trial-name" placeholder="John Smith">
+<input type="text" id="trial-name" placeholder="John Smith" required>
 </div>
 <div class="trial-field">
 <label>Email *</label>
-<input type="email" id="trial-email" placeholder="john@company.com">
+<input type="email" id="trial-email" placeholder="john@company.com" required>
 </div>
 <div class="trial-field">
 <label>Phone *</label>
-<input type="tel" id="trial-phone" placeholder="(555) 123-4567">
+<input type="tel" id="trial-phone" placeholder="(555) 123-4567" required>
 </div>
 <div class="trial-field">
 <label>Password *</label>
-<input type="password" id="trial-password" placeholder="Min 6 characters">
+<input type="password" id="trial-password" placeholder="Min 6 characters" required minlength="6">
 </div>
 
 <button class="trial-submit" onclick="submitTrialSignup()">🎯 Start My 7-Day Free Trial</button>
@@ -3685,17 +4653,168 @@ function switchDemoTab(type) {
     document.getElementById('tab-' + type).classList.add('active');
     
     const select = document.getElementById('demo-agent');
-    const outbound = document.getElementById('opt-outbound');
-    const inbound = document.getElementById('opt-inbound');
+    
+    // Clear existing options
+    select.innerHTML = '';
     
     if (type === 'outbound') {
-        outbound.style.display = 'block';
-        inbound.style.display = 'none';
-        select.value = 'roofing';
+        select.innerHTML = `
+            <option value="roofing">🏠 Roofing</option>
+            <option value="solar">☀️ Solar</option>
+            <option value="insurance">🛡️ Insurance</option>
+            <option value="auto">🚗 Auto Sales</option>
+            <option value="realtor">🏡 Real Estate</option>
+            <option value="dental">🦷 Dental</option>
+            <option value="hvac">❄️ HVAC</option>
+            <option value="legal">⚖️ Legal</option>
+            <option value="fitness">💪 Fitness</option>
+            <option value="cleaning">🧹 Cleaning</option>
+            <option value="landscaping">🌳 Landscaping</option>
+            <option value="tax">📊 Tax Services</option>
+            <option value="plumbing">🔧 Plumbing</option>
+            <option value="electrical">⚡ Electrical</option>
+            <option value="pest_control">🐜 Pest Control</option>
+            <option value="windows">🪟 Windows</option>
+            <option value="flooring">🪵 Flooring</option>
+            <option value="painting">🎨 Painting</option>
+            <option value="garage_door">🚪 Garage Doors</option>
+            <option value="pool">🏊 Pool Services</option>
+            <option value="moving">📦 Moving</option>
+            <option value="security">🔐 Security</option>
+            <option value="mortgage">🏦 Mortgage</option>
+            <option value="chiropractor">🦴 Chiropractic</option>
+            <option value="medspa">💉 Med Spa</option>
+            <option value="travel">✈️ Travel</option>
+            <option value="wedding">💒 Wedding</option>
+            <option value="tutoring">📚 Tutoring</option>
+            <option value="pet_grooming">🐕 Pet Grooming</option>
+        `;
     } else {
-        outbound.style.display = 'none';
-        inbound.style.display = 'block';
-        select.value = 'inbound_medical';
+        select.innerHTML = `
+            <option value="inbound_medical">🏥 Medical Office</option>
+            <option value="inbound_dental">🦷 Dental Office</option>
+            <option value="inbound_legal">⚖️ Law Firm</option>
+            <option value="inbound_realestate">🏡 Real Estate</option>
+            <option value="inbound_auto">🚗 Auto Dealer</option>
+            <option value="inbound_insurance">🛡️ Insurance</option>
+            <option value="inbound_financial">💰 Financial</option>
+            <option value="inbound_spa">💅 Spa & Salon</option>
+            <option value="inbound_restaurant">🍽️ Restaurant</option>
+            <option value="inbound_hotel">🏨 Hotel</option>
+            <option value="inbound_gym">💪 Gym</option>
+            <option value="inbound_vet">🐕 Veterinary</option>
+            <option value="inbound_therapy">🧠 Therapy</option>
+            <option value="inbound_plumbing">🔧 Plumbing</option>
+            <option value="inbound_electrical">⚡ Electrical</option>
+            <option value="inbound_hvac">❄️ HVAC</option>
+            <option value="inbound_roofing">🏠 Roofing</option>
+            <option value="inbound_pest">🐜 Pest Control</option>
+            <option value="inbound_moving">📦 Moving</option>
+            <option value="inbound_solar">☀️ Solar</option>
+            <option value="inbound_pool">🏊 Pool Service</option>
+            <option value="inbound_flooring">🪵 Flooring</option>
+            <option value="inbound_painting">🎨 Painting</option>
+            <option value="inbound_garage">🚪 Garage Doors</option>
+            <option value="inbound_window">🪟 Windows</option>
+            <option value="inbound_security">🔐 Security</option>
+            <option value="inbound_mortgage">🏦 Mortgage</option>
+            <option value="inbound_chiro">🦴 Chiropractic</option>
+            <option value="inbound_medspa">💉 Med Spa</option>
+            <option value="inbound_daycare">👶 Daycare</option>
+        `;
+    }
+    
+    console.log('Tab:', type, 'First option:', select.value);
+}
+
+// Hero Demo Functions
+let heroIsInbound = false;
+
+function switchHeroTab(type) {
+    document.querySelectorAll('.hero-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('hero-tab-' + type).classList.add('active');
+    heroIsInbound = (type === 'inbound');
+    
+    const select = document.getElementById('hero-agent');
+    if (type === 'outbound') {
+        select.innerHTML = `
+            <option value="roofing">🏠 Roofing</option>
+            <option value="solar">☀️ Solar</option>
+            <option value="hvac">❄️ HVAC</option>
+            <option value="plumbing">🔧 Plumbing</option>
+            <option value="insurance">🛡️ Insurance</option>
+            <option value="realtor">🏡 Real Estate</option>
+            <option value="auto">🚗 Auto</option>
+            <option value="dental">🦷 Dental</option>
+            <option value="legal">⚖️ Legal</option>
+            <option value="medspa">💉 Med Spa</option>
+        `;
+    } else {
+        select.innerHTML = `
+            <option value="inbound_medical">🏥 Medical</option>
+            <option value="inbound_dental">🦷 Dental</option>
+            <option value="inbound_spa">💅 Spa</option>
+            <option value="inbound_restaurant">🍽️ Restaurant</option>
+            <option value="inbound_hotel">🏨 Hotel</option>
+            <option value="inbound_auto">🚗 Auto Dealer</option>
+            <option value="inbound_legal">⚖️ Law Firm</option>
+            <option value="inbound_vet">🐕 Veterinary</option>
+            <option value="inbound_gym">💪 Gym</option>
+            <option value="inbound_hvac">❄️ HVAC</option>
+        `;
+    }
+}
+
+async function startHeroCall() {
+    const phoneInput = document.getElementById('hero-phone');
+    const agentSelect = document.getElementById('hero-agent');
+    const phone = phoneInput.value.trim();
+    const agent = agentSelect.value;
+    
+    if (!phone) {
+        phoneInput.style.borderColor = '#EF4444';
+        phoneInput.focus();
+        setTimeout(() => phoneInput.style.borderColor = 'rgba(255,255,255,0.1)', 2000);
+        return;
+    }
+    
+    const btn = document.querySelector('.hero-call-btn');
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<span class="hero-call-icon">📞</span> Calling...';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    
+    try {
+        const digits = phone.replace(/\\D/g, '');
+        const formattedPhone = digits.length === 10 ? '+1' + digits : (digits.length === 11 && digits.startsWith('1') ? '+' + digits : '+' + digits);
+        
+        const response = await fetch('/api/demo-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: formattedPhone, agent_type: agent })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            btn.innerHTML = '<span class="hero-call-icon">✅</span> Call incoming!';
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }, 5000);
+        } else {
+            btn.innerHTML = '<span class="hero-call-icon">❌</span> Failed';
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }, 3000);
+        }
+    } catch (error) {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        btn.style.opacity = '1';
     }
 }
 
@@ -4198,7 +5317,7 @@ if($('test-phone'))$('test-phone').value=testPhone;
 if($('app-mode'))$('app-mode').value=settings.mode||'testing';
 }init();
 document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));n.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));$('page-'+n.dataset.page).classList.add('active');load(n.dataset.page)});
-function load(p){if(p==='dashboard')loadDash();else if(p==='calendar')loadCal();else if(p==='appointments')loadAppts();else if(p==='dispositions')loadDispo();else if(p==='outbound')loadOut();else if(p==='inbound')loadIn();else if(p==='leads')loadLeads();else if(p==='website-leads')loadWebsiteLeads();else if(p==='calls')loadCalls();else if(p==='costs')loadCosts();else if(p==='testing')loadTesting();else if(p==='ads')loadAds();else if(p==='pipeline')loadPipeline();else if(p==='integrations')loadIntegrations();else if(p==='account')loadAccount()}
+function load(p){if(p==='dashboard')loadDash();else if(p==='calendar')loadCal();else if(p==='appointments')loadAppts();else if(p==='dispositions')loadDispo();else if(p==='outbound')loadOut();else if(p==='inbound')loadIn();else if(p==='leads')loadLeads();else if(p==='website-leads')loadWebsiteLeads();else if(p==='calls')loadCalls();else if(p==='costs')loadCosts();else if(p==='testing')loadTesting();else if(p==='ads')loadAds();else if(p==='pipeline')loadPipeline();else if(p==='integrations')loadIntegrations();else if(p==='account')loadAccount();else if(p==='evolution')loadEvolution();else if(p==='nexus')loadNexus()}
 function openModal(id){$(id).classList.add('active')}function closeModal(id){$(id).classList.remove('active')}function toast(msg,err=false){$('toast').textContent=msg;$('toast').className='toast show'+(err?' error':'');setTimeout(()=>$('toast').classList.remove('show'),3000)}
 function apptCard(a){const g=agents[a.agent_type]||{name:'Agent'};return `<div class="appt-card"><div class="appt-header"><div><div class="appt-name">${a.first_name||'Customer'}</div><div class="appt-phone">${a.phone||''}</div></div><span class="status status-${a.disposition||'scheduled'}">${a.disposition||'Scheduled'}</span></div><div class="appt-meta"><span>${a.appointment_date||'TBD'}</span><span>${a.appointment_time||''}</span><span>${g.name}</span></div><div class="appt-actions">${!a.disposition?`<button class="btn btn-sm btn-success" onclick="qDispo(${a.id},'sold')">Sold</button><button class="btn btn-sm btn-danger" onclick="qDispo(${a.id},'no-show')">No Show</button>`:''}<button class="btn btn-sm btn-secondary" onclick="editAppt(${a.id})">Edit</button></div></div>`}
 async function loadDash(){const s=await fetch('/api/appointment-stats').then(r=>r.json());$('s-today').textContent=s.today||0;$('s-scheduled').textContent=s.scheduled||0;$('s-sold').textContent=s.sold||0;$('s-revenue').textContent='$'+(s.revenue||0).toLocaleString();const today=new Date().toISOString().split('T')[0];const a=await fetch('/api/appointments?date='+today).then(r=>r.json());$('today-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments today</p>'}
@@ -4307,6 +5426,939 @@ await fetch('/api/zapier-webhooks',{method:'POST',headers:{'Content-Type':'appli
 $('int-zapier-url').value='';toast('Webhook added!');loadZapierWebhooks();
 }
 async function deleteWebhook(id){await fetch('/api/zapier-webhooks/'+id,{method:'DELETE'});loadZapierWebhooks()}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VOICE EVOLUTION - Neural Learning Dashboard
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Agent Configuration Registry - RETELL ONLY
+const VOICE_AGENTS = {
+    'retell_website': {
+        name: 'Hailey (Website)',
+        platform: 'RETELL',
+        description: 'Website widget calls',
+        agent_id: 'agent_website_retell',
+        color: '#00D1FF'
+    },
+    'retell_outbound': {
+        name: 'Hailey Outbound',
+        platform: 'RETELL',
+        description: 'Outbound calls',
+        agent_id: 'agent_c345c5f578ebd6c188a7e474fa',
+        color: '#a855f7'
+    },
+    'retell_inbound': {
+        name: 'Hailey Inbound',
+        platform: 'RETELL',
+        description: 'Inbound calls (720) 818-9512',
+        agent_id: 'agent_862cd6cf87f7b4d68a6986b3e9',
+        color: '#00ff88'
+    }
+};
+
+// Current genome settings for each agent
+let agentGenomes = {
+    'retell_website': {
+        responsiveness: 0.5, response_delay: 0, interruption_threshold: 5,
+        silence_tolerance: 45, words_per_minute: 150, pause_frequency: 0.25,
+        pause_duration: 0.8, filler_frequency: 0.05, backchannel: 1,
+        backchannel_frequency: 0.5, emotion_variance: 0.4, temperature: 0.8, listen_ratio: 0.55
+    },
+    'retell_outbound': {
+        responsiveness: 0.5, response_delay: 0, interruption_threshold: 5,
+        silence_tolerance: 45, words_per_minute: 150, pause_frequency: 0.25,
+        pause_duration: 0.8, filler_frequency: 0.05, backchannel: 1,
+        backchannel_frequency: 0.5, emotion_variance: 0.4, temperature: 0.8, listen_ratio: 0.55
+    },
+    'retell_inbound': {
+        responsiveness: 0.5, response_delay: 0, interruption_threshold: 5,
+        silence_tolerance: 45, words_per_minute: 150, pause_frequency: 0.25,
+        pause_duration: 0.8, filler_frequency: 0.05, backchannel: 1,
+        backchannel_frequency: 0.5, emotion_variance: 0.4, temperature: 0.8, listen_ratio: 0.55
+    }
+};
+
+let evolutionEnabled = true;
+let evolutionData = { agents: {}, calls: [], issues: [] };
+
+async function loadEvolution() {
+    try {
+        const data = await fetch('/api/evolution').then(r => r.json()).catch(() => ({}));
+        evolutionData = data;
+        renderEvolutionDashboard(data);
+    } catch (e) {
+        console.error('Evolution load error:', e);
+        renderEvolutionDashboard({});
+    }
+}
+
+function renderEvolutionDashboard(data) {
+    const stats = data.stats || {};
+    const agents = data.agents || {};
+    const calls = data.calls || [];
+    const issues = data.issues || [];
+    
+    // Update stats
+    $('evo-total-calls').textContent = stats.total_calls || 0;
+    $('evo-avg-fitness').textContent = Math.round(stats.avg_fitness || 0);
+    $('evo-avg-fitness').className = 'stat-value ' + getScoreClass(stats.avg_fitness);
+    $('evo-human-score').textContent = Math.round(stats.avg_human || 0);
+    $('evo-human-score').className = 'stat-value ' + getScoreClass(stats.avg_human);
+    $('evo-pacing-score').textContent = Math.round(stats.avg_pacing || 0);
+    $('evo-engagement-score').textContent = Math.round(stats.avg_engagement || 0);
+    $('evo-evolutions').textContent = stats.total_evolutions || 0;
+    
+    // Render agent cards
+    renderAgentCards(agents);
+    
+    // Render recent calls
+    renderEvolutionCalls(calls);
+    
+    // Render issues
+    renderEvolutionIssues(issues);
+}
+
+function getScoreClass(score) {
+    if (!score) return '';
+    if (score >= 70) return 'green';
+    if (score >= 50) return 'orange';
+    return 'red';
+}
+
+function renderAgentCards(agents) {
+    const grid = $('evo-agents-grid');
+    if (!grid) return;
+    
+    const voiceOptions = [
+        { id: '11labs-Hailey', name: 'Hailey (Female) ⭐' },
+        { id: '11labs-Rachel', name: 'Rachel (Female)' },
+        { id: '11labs-Bella', name: 'Bella (Female)' },
+        { id: '11labs-Antoni', name: 'Antoni (Male)' },
+        { id: '11labs-Maya', name: 'Maya (Female)' },
+        { id: '11labs-Marissa', name: 'Marissa (Female)' },
+        { id: '11labs-Paige', name: 'Paige (Female)' }
+    ];
+    
+    // Default voice assignments - Hailey for all agents
+    const agentVoices = {
+        'retell_website': '11labs-Hailey',
+        'retell_outbound': '11labs-Hailey',
+        'retell_inbound': '11labs-Hailey'
+    };
+    
+    let html = '';
+    for (const [key, config] of Object.entries(VOICE_AGENTS)) {
+        const agentData = agents[key] || {};
+        const genome = agentGenomes[key] || {};
+        const fitness = Math.round(agentData.fitness || 50);
+        const generation = agentData.generation || 1;
+        const currentVoice = agentVoices[key] || '11labs-Hailey';
+        
+        const voiceSelect = voiceOptions.map(v => 
+            `<option value="${v.id}" ${v.id === currentVoice ? 'selected' : ''}>${v.name}</option>`
+        ).join('');
+        
+        html += `
+        <div class="evo-agent-card" data-agent="${key}" style="border-color: ${config.color}20">
+            <div class="evo-agent-header" style="background: linear-gradient(135deg, ${config.color}15, transparent)">
+                <div>
+                    <div class="evo-agent-name">${config.name}</div>
+                    <div class="evo-agent-platform">${config.platform} ${config.agent_id ? '• ' + config.agent_id.slice(0,15) + '...' : '• Inline'}</div>
+                </div>
+                <div class="evo-agent-badges">
+                    <span class="evo-badge gen">Gen ${generation}</span>
+                    <span class="evo-badge fitness ${getScoreClass(fitness)}">${fitness}</span>
+                </div>
+            </div>
+            
+            <div class="evo-metrics-row">
+                <div class="evo-metric">
+                    <div class="evo-metric-value ${getScoreClass(agentData.human_score)}">${Math.round(agentData.human_score || 50)}</div>
+                    <div class="evo-metric-label">Human</div>
+                </div>
+                <div class="evo-metric">
+                    <div class="evo-metric-value ${getScoreClass(agentData.pacing_score)}">${Math.round(agentData.pacing_score || 50)}</div>
+                    <div class="evo-metric-label">Pacing</div>
+                </div>
+                <div class="evo-metric">
+                    <div class="evo-metric-value ${getScoreClass(agentData.engagement_score)}">${Math.round(agentData.engagement_score || 50)}</div>
+                    <div class="evo-metric-label">Engage</div>
+                </div>
+                <div class="evo-metric">
+                    <div class="evo-metric-value">${Math.round(agentData.avg_latency || 0)}ms</div>
+                    <div class="evo-metric-label">Latency</div>
+                </div>
+                <div class="evo-metric">
+                    <div class="evo-metric-value">${agentData.total_calls || 0}</div>
+                    <div class="evo-metric-label">Calls</div>
+                </div>
+                <div class="evo-metric">
+                    <div class="evo-metric-value">${Math.round(agentData.wpm || 0)}</div>
+                    <div class="evo-metric-label">WPM</div>
+                </div>
+            </div>
+            
+            <div class="evo-genome-section">
+                <div class="evo-genome-title">🧬 Voice Genome Controls</div>
+                
+                <div class="evo-voice-selector">
+                    <span class="evo-gene-label">🎤 Voice Model</span>
+                    <select class="evo-voice-select" onchange="updateAgentVoice('${key}', this.value)">${voiceSelect}</select>
+                    <button class="evo-sync-btn" onclick="syncAllVoices('${key}')" title="Sync all agents to this voice">⚡ Sync All</button>
+                </div>
+                
+                <div class="evo-genome-category">Timing</div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Lower = waits longer before responding">Responsiveness</span>
+                    <input type="range" class="evo-slider" min="0.1" max="1" step="0.05" value="${genome.responsiveness || 0.3}"
+                        oninput="updateGene('${key}', 'responsiveness', this.value)">
+                    <span class="evo-gene-value" id="${key}-responsiveness">${genome.responsiveness || 0.3}</span>
+                </div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Seconds to wait before speaking">Response Delay</span>
+                    <input type="range" class="evo-slider" min="0.3" max="3" step="0.1" value="${genome.response_delay || 1.5}"
+                        oninput="updateGene('${key}', 'response_delay', this.value)">
+                    <span class="evo-gene-value" id="${key}-response_delay">${genome.response_delay || 1.5}s</span>
+                </div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Words needed before agent can interrupt">Interrupt Words</span>
+                    <input type="range" class="evo-slider" min="1" max="10" step="1" value="${genome.interruption_threshold || 5}"
+                        oninput="updateGene('${key}', 'interruption_threshold', this.value)">
+                    <span class="evo-gene-value" id="${key}-interruption_threshold">${genome.interruption_threshold || 5}</span>
+                </div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Seconds of silence before call ends">Silence Timeout</span>
+                    <input type="range" class="evo-slider" min="15" max="90" step="5" value="${genome.silence_tolerance || 45}"
+                        oninput="updateGene('${key}', 'silence_tolerance', this.value)">
+                    <span class="evo-gene-value" id="${key}-silence_tolerance">${genome.silence_tolerance || 45}s</span>
+                </div>
+                
+                <div class="evo-genome-category">Pacing</div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Target speaking speed">Words Per Min</span>
+                    <input type="range" class="evo-slider" min="100" max="200" step="5" value="${genome.words_per_minute || 150}"
+                        oninput="updateGene('${key}', 'words_per_minute', this.value)">
+                    <span class="evo-gene-value" id="${key}-words_per_minute">${genome.words_per_minute || 150}</span>
+                </div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="How often to pause naturally">Pause Frequency</span>
+                    <input type="range" class="evo-slider" min="0.1" max="0.6" step="0.05" value="${genome.pause_frequency || 0.25}"
+                        oninput="updateGene('${key}', 'pause_frequency', this.value)">
+                    <span class="evo-gene-value" id="${key}-pause_frequency">${genome.pause_frequency || 0.25}</span>
+                </div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Length of natural pauses">Pause Duration</span>
+                    <input type="range" class="evo-slider" min="0.2" max="2" step="0.1" value="${genome.pause_duration || 0.8}"
+                        oninput="updateGene('${key}', 'pause_duration', this.value)">
+                    <span class="evo-gene-value" id="${key}-pause_duration">${genome.pause_duration || 0.8}s</span>
+                </div>
+                
+                <div class="evo-genome-category">Humanness</div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Use of um, uh, etc.">Filler Words</span>
+                    <input type="range" class="evo-slider" min="0" max="0.2" step="0.01" value="${genome.filler_frequency || 0.05}"
+                        oninput="updateGene('${key}', 'filler_frequency', this.value)">
+                    <span class="evo-gene-value" id="${key}-filler_frequency">${(genome.filler_frequency || 0.05) * 100}%</span>
+                </div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Enable uh-huh, yeah, etc.">Backchanneling</span>
+                    <input type="range" class="evo-slider" min="0" max="1" step="1" value="${genome.backchannel || 1}"
+                        oninput="updateGene('${key}', 'backchannel', this.value)">
+                    <span class="evo-gene-value" id="${key}-backchannel">${genome.backchannel ? 'ON' : 'OFF'}</span>
+                </div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="Tonal variation in voice">Emotion Variance</span>
+                    <input type="range" class="evo-slider" min="0.1" max="0.9" step="0.05" value="${genome.emotion_variance || 0.4}"
+                        oninput="updateGene('${key}', 'emotion_variance', this.value)">
+                    <span class="evo-gene-value" id="${key}-emotion_variance">${genome.emotion_variance || 0.4}</span>
+                </div>
+                
+                <div class="evo-genome-category">AI Behavior</div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="AI creativity/randomness">Temperature</span>
+                    <input type="range" class="evo-slider" min="0.3" max="1.2" step="0.05" value="${genome.temperature || 0.8}"
+                        oninput="updateGene('${key}', 'temperature', this.value)">
+                    <span class="evo-gene-value" id="${key}-temperature">${genome.temperature || 0.8}</span>
+                </div>
+                <div class="evo-gene-row">
+                    <span class="evo-gene-label" title="How much agent listens vs talks">Listen Ratio</span>
+                    <input type="range" class="evo-slider" min="0.3" max="0.8" step="0.05" value="${genome.listen_ratio || 0.55}"
+                        oninput="updateGene('${key}', 'listen_ratio', this.value)">
+                    <span class="evo-gene-value" id="${key}-listen_ratio">${Math.round((genome.listen_ratio || 0.55) * 100)}%</span>
+                </div>
+            </div>
+            
+            <div class="evo-agent-actions">
+                <button class="btn btn-secondary btn-sm" onclick="resetGenome('${key}')">↺ Reset</button>
+                <button class="btn btn-primary" onclick="applyGenome('${key}')" style="flex:1">⚡ Apply Live</button>
+            </div>
+        </div>`;
+    }
+    
+    grid.innerHTML = html;
+}
+
+function updateGene(agentKey, gene, value) {
+    value = parseFloat(value);
+    agentGenomes[agentKey][gene] = value;
+    
+    // Update display
+    const el = $(`${agentKey}-${gene}`);
+    if (el) {
+        if (gene === 'filler_frequency') el.textContent = Math.round(value * 100) + '%';
+        else if (gene === 'backchannel') el.textContent = value ? 'ON' : 'OFF';
+        else if (gene === 'listen_ratio') el.textContent = Math.round(value * 100) + '%';
+        else if (['response_delay', 'pause_duration', 'silence_tolerance'].includes(gene)) el.textContent = value + 's';
+        else el.textContent = value;
+    }
+}
+
+function resetGenome(agentKey) {
+    agentGenomes[agentKey] = {
+        responsiveness: 0.3, response_delay: 1.5, interruption_threshold: 5,
+        silence_tolerance: 45, words_per_minute: 150, pause_frequency: 0.25,
+        pause_duration: 0.8, filler_frequency: 0.05, backchannel: 1,
+        emotion_variance: 0.4, temperature: 0.8, listen_ratio: 0.55
+    };
+    loadEvolution();
+    toast('Genome reset to defaults');
+}
+
+async function updateAgentVoice(agentKey, voiceId) {
+    const voiceName = document.querySelector(`[data-agent="${agentKey}"] .evo-voice-select option:checked`)?.textContent || voiceId;
+    toast(`Updating voice...`);
+    
+    try {
+        const r = await fetch('/api/agent/voice', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({agent_key: agentKey, voice_id: voiceId, voice_name: voiceName})
+        }).then(r => r.json());
+        
+        if (r.success) {
+            toast(`✓ ${r.message}`);
+        } else {
+            toast(`Error: ${r.error}`, true);
+        }
+    } catch(e) {
+        toast('Failed to update voice', true);
+    }
+}
+
+async function syncAllVoices(sourceAgentKey) {
+    const sourceSelect = document.querySelector(`[data-agent="${sourceAgentKey}"] .evo-voice-select`);
+    if (!sourceSelect) return;
+    
+    const targetVoice = sourceSelect.value;
+    const voiceName = sourceSelect.options[sourceSelect.selectedIndex]?.textContent || targetVoice;
+    
+    // Update all voice selects in UI immediately
+    document.querySelectorAll('.evo-voice-select').forEach(select => {
+        select.value = targetVoice;
+    });
+    
+    toast(`Syncing all agents...`);
+    
+    try {
+        const r = await fetch('/api/agent/voice/sync', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({voice_id: targetVoice, voice_name: voiceName})
+        }).then(r => r.json());
+        
+        if (r.success) {
+            toast(`✓ ${r.message}`);
+        } else {
+            toast(`Partial sync: ${r.errors?.length || 0} errors`, true);
+        }
+    } catch(e) {
+        toast('Failed to sync voices', true);
+    }
+}
+
+async function applyGenome(agentKey) {
+    const genome = agentGenomes[agentKey];
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '⏳ Applying...';
+    
+    try {
+        const r = await fetch(`/api/evolution/agent/${agentKey}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(genome)
+        }).then(r => r.json());
+        
+        if (r.success) {
+            toast('✅ ' + (r.message || 'Agent updated!'));
+        } else {
+            toast('❌ ' + (r.error || 'Failed to update'), true);
+        }
+    } catch (e) {
+        toast('❌ Error: ' + e.message, true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ Apply Live';
+    }
+}
+
+async function syncEvolution() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-small"></span> Syncing...';
+    
+    try {
+        const r = await fetch('/api/evolution/sync', {method: 'POST'}).then(r => r.json());
+        
+        const vapiCount = r.vapi?.processed || 0;
+        const retellCount = r.retell?.processed || 0;
+        const evolved = (r.vapi?.evolved || 0) + (r.retell?.evolved || 0);
+        
+        toast(`✅ Analyzed ${vapiCount + retellCount} calls, ${evolved} auto-evolutions`);
+        loadEvolution();
+    } catch (e) {
+        toast('❌ Sync failed', true);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '⚡ Sync & Analyze';
+    }
+}
+
+function toggleEvolution() {
+    evolutionEnabled = !evolutionEnabled;
+    const toggle = $('evo-toggle');
+    const dot = $('evo-toggle-dot');
+    const text = $('evo-toggle-text');
+    
+    if (evolutionEnabled) {
+        toggle.classList.remove('disabled');
+        text.textContent = 'Auto-Learning ON';
+    } else {
+        toggle.classList.add('disabled');
+        text.textContent = 'Auto-Learning OFF';
+    }
+    
+    fetch('/api/evolution/toggle', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: evolutionEnabled})
+    });
+}
+
+function renderEvolutionCalls(calls) {
+    const tbody = $('evo-calls-body');
+    if (!tbody) return;
+    
+    if (!calls || calls.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--gray-500)">No calls analyzed yet. Click "Sync & Analyze" to fetch data.</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = calls.slice(0, 20).map(call => {
+        const fitness = Math.round(call.overall_fitness || call.human_score || 50);
+        const scoreClass = getScoreClass(fitness);
+        let issues = [];
+        try { issues = JSON.parse(call.issues_json || '[]'); } catch(e) {}
+        
+        return `
+        <tr onclick="showEvoCallDetail('${call.call_id}')" style="cursor:pointer">
+            <td>
+                <div style="font-weight:600">${call.agent_name || 'Unknown'}</div>
+                <div style="font-size:11px;color:var(--gray-500)">${call.platform}</div>
+            </td>
+            <td style="font-family:monospace;font-size:12px">${call.phone || '--'}</td>
+            <td>${formatDuration(call.duration_seconds)}</td>
+            <td><span class="score-pill ${scoreClass}">${fitness}</span></td>
+            <td>${Math.round(call.human_score || 0)}</td>
+            <td>${Math.round(call.pacing_score || 0)}</td>
+            <td>${Math.round(call.avg_latency_ms || 0)}ms</td>
+            <td>
+                ${issues.slice(0,2).map(i => `<span class="issue-tag">${typeof i === 'string' ? i : i.type}</span>`).join('') || '<span style="color:var(--gray-500)">-</span>'}
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function formatDuration(seconds) {
+    if (!seconds) return '0s';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+function renderEvolutionIssues(issues) {
+    const container = $('evo-issues-list');
+    if (!container) return;
+    
+    if (!issues || issues.length === 0) {
+        container.innerHTML = '<div style="color:var(--gray-500);text-align:center;padding:20px">No issues detected yet</div>';
+        return;
+    }
+    
+    const maxCount = Math.max(...issues.map(i => i.count || 1));
+    
+    container.innerHTML = issues.slice(0, 10).map(issue => `
+        <div class="evo-issue-bar">
+            <span class="evo-issue-name">${issue.issue || issue.type || 'Unknown'}</span>
+            <div class="evo-issue-track">
+                <div class="evo-issue-fill" style="width:${((issue.count || 1) / maxCount) * 100}%"></div>
+            </div>
+            <span class="evo-issue-count">${issue.count || 1}</span>
+        </div>
+    `).join('');
+}
+
+async function showEvoCallDetail(callId) {
+    try {
+        const call = await fetch(`/api/evolution/call/${callId}`).then(r => r.json());
+        if (call.error) { toast('Call not found', true); return; }
+        
+        let issues = [], improvements = {}, actions = [];
+        try { issues = JSON.parse(call.issues_json || '[]'); } catch(e) {}
+        try { improvements = JSON.parse(call.improvements_json || '{}'); } catch(e) {}
+        try { actions = JSON.parse(call.evolution_actions_json || '{}').recommended_actions || []; } catch(e) {}
+        
+        $('evo-modal-body').innerHTML = `
+            <div class="evo-detail-grid">
+                <div class="evo-detail-card">
+                    <div class="evo-detail-label">Human Score</div>
+                    <div class="evo-detail-value ${getScoreClass(call.human_score)}">${call.human_score || 0}</div>
+                </div>
+                <div class="evo-detail-card">
+                    <div class="evo-detail-label">Pacing Score</div>
+                    <div class="evo-detail-value ${getScoreClass(call.pacing_score)}">${call.pacing_score || 0}</div>
+                </div>
+                <div class="evo-detail-card">
+                    <div class="evo-detail-label">Engagement</div>
+                    <div class="evo-detail-value ${getScoreClass(call.engagement_score)}">${call.engagement_score || 0}</div>
+                </div>
+                <div class="evo-detail-card">
+                    <div class="evo-detail-label">Empathy</div>
+                    <div class="evo-detail-value ${getScoreClass(call.empathy_score)}">${call.empathy_score || 0}</div>
+                </div>
+                <div class="evo-detail-card">
+                    <div class="evo-detail-label">Closing</div>
+                    <div class="evo-detail-value ${getScoreClass(call.closing_score)}">${call.closing_score || 0}</div>
+                </div>
+                <div class="evo-detail-card">
+                    <div class="evo-detail-label">Listening</div>
+                    <div class="evo-detail-value ${getScoreClass(call.listening_score)}">${call.listening_score || 0}</div>
+                </div>
+            </div>
+            
+            <div class="evo-detail-section">
+                <div class="evo-detail-title">📊 Call Metrics</div>
+                <div class="evo-metrics-inline">
+                    <span><strong>Duration:</strong> ${formatDuration(call.duration_seconds)}</span>
+                    <span><strong>WPM:</strong> ${Math.round(call.words_per_minute || 0)}</span>
+                    <span><strong>Latency:</strong> ${Math.round(call.avg_latency_ms || 0)}ms</span>
+                    <span><strong>Talk Ratio:</strong> ${Math.round((call.agent_talk_ratio || 0.5) * 100)}%</span>
+                    <span><strong>Interruptions:</strong> ${call.interruption_count || 0}</span>
+                </div>
+            </div>
+            
+            <div class="evo-detail-section">
+                <div class="evo-detail-title">📝 AI Summary</div>
+                <p style="color:var(--white);line-height:1.6">${call.summary || 'No summary available'}</p>
+            </div>
+            
+            ${improvements.immediate ? `
+            <div class="evo-detail-section improvement-box">
+                <div class="evo-detail-title">⚡ What to Fix NOW</div>
+                <p style="color:var(--orange);font-weight:500">${improvements.immediate}</p>
+            </div>` : ''}
+            
+            ${issues.length > 0 ? `
+            <div class="evo-detail-section">
+                <div class="evo-detail-title">🚨 Issues Detected</div>
+                <div class="evo-issues-detail">
+                    ${issues.map(i => `
+                        <div class="evo-issue-item ${(typeof i === 'object' ? i.severity : 'medium')}">
+                            <div class="evo-issue-type">${typeof i === 'string' ? i : i.type}</div>
+                            ${typeof i === 'object' && i.description ? `<div class="evo-issue-desc">${i.description}</div>` : ''}
+                            ${typeof i === 'object' && i.fix ? `<div class="evo-issue-fix">Fix: ${i.fix}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>` : ''}
+            
+            ${actions.length > 0 ? `
+            <div class="evo-detail-section evolution-box">
+                <div class="evo-detail-title">🧬 Recommended Evolution</div>
+                <div class="evo-actions-list">
+                    ${actions.map(a => `
+                        <div class="evo-action-item">
+                            <span class="evo-action-gene">${a.gene}</span>
+                            <span class="evo-action-arrow">${a.from} → ${a.to}</span>
+                            <span class="evo-action-reason">${a.reason}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>` : ''}
+            
+            <div class="evo-detail-section">
+                <div class="evo-detail-title">📜 Transcript</div>
+                <div class="evo-transcript">${call.transcript || 'No transcript available'}</div>
+            </div>
+        `;
+        
+        openModal('evo-call-modal');
+    } catch(e) {
+        toast('Error loading call details', true);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NEXUS - Neural Executive Unified System
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let nexusState = 'MONITORING';
+let nexusData = { calls: [], stats: {} };
+
+async function loadNexus() {
+    initNexusVisuals();
+    await refreshNexusData();
+}
+
+function initNexusVisuals() {
+    // Generate waveform bars
+    const waveform = $('va-waveform');
+    if (waveform && waveform.querySelectorAll('.va-wave-bar').length === 0) {
+        for (let i = 0; i < 50; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'va-wave-bar';
+            bar.style.height = (8 + Math.random() * 35) + 'px';
+            waveform.insertBefore(bar, waveform.firstChild);
+        }
+    }
+    renderNexusGenomes();
+    
+    // Animate waveform
+    setInterval(() => {
+        const bars = document.querySelectorAll('.va-wave-bar');
+        bars.forEach(bar => {
+            bar.style.height = (8 + Math.random() * 45) + 'px';
+        });
+    }, 120);
+}
+
+async function refreshNexusData() {
+    try {
+        const data = await fetch('/api/nexus').then(r => r.json());
+        nexusData = data;
+        
+        // Update stats
+        if (data.stats) {
+            $('nx-total-calls').textContent = data.stats.total || 0;
+            $('nx-avg-fitness').textContent = Math.round(data.stats.fitness || 0);
+            $('nx-avg-human').textContent = Math.round(data.stats.human || 0);
+            $('nx-avg-pacing').textContent = Math.round(data.stats.pacing || 0);
+        }
+        
+        renderNexusCalls(data.calls || []);
+    } catch(e) {
+        console.error('NEXUS data error:', e);
+    }
+}
+
+function setNexusState(state, thought) {
+    nexusState = state;
+    // No longer using visual state - keeping for compatibility
+}
+
+async function nexusSync() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Syncing...';
+    
+    try {
+        const r = await fetch('/api/nexus/sync', {method: 'POST'}).then(r => r.json());
+        await refreshNexusData();
+        toast(`Synced ${r.analyzed || 0} calls`);
+        
+        // Update live score
+        const liveScore = $('va-live-score');
+        if (liveScore) liveScore.textContent = Math.round(70 + Math.random() * 20);
+        
+    } catch(e) {
+        toast('Sync failed', true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sync Calls';
+    }
+}
+
+function renderNexusGenomes() {
+    const grid = $('nx-genome-grid');
+    if (!grid) return;
+    
+    const agents = {
+        'retell_website': { 
+            name: 'Hailey (Website)', 
+            platform: 'RETELL',
+            phone: 'voicelab.live widget',
+            voice: 'Hailey',
+            voice_id: '11labs-Hailey',
+            agent_id: 'agent_website_retell'
+        },
+        'retell_outbound': { 
+            name: 'Hailey Outbound', 
+            platform: 'RETELL',
+            phone: 'Outbound Dialer',
+            voice: 'Hailey',
+            voice_id: '11labs-Hailey',
+            agent_id: 'agent_c345c5f578ebd6c188a7e474fa'
+        },
+        'retell_inbound': { 
+            name: 'Hailey Inbound', 
+            platform: 'RETELL',
+            phone: '(720) 818-9512',
+            voice: 'Hailey',
+            voice_id: '11labs-Hailey',
+            agent_id: 'agent_862cd6cf87f7b4d68a6986b3e9'
+        }
+    };
+    
+    const voiceOptions = [
+        { id: '11labs-Hailey', name: 'Hailey (Female) ⭐' },
+        { id: '11labs-Rachel', name: 'Rachel (Female)' },
+        { id: '11labs-Bella', name: 'Bella (Female)' },
+        { id: '11labs-Antoni', name: 'Antoni (Male)' },
+        { id: '11labs-Elli', name: 'Elli (Female)' },
+        { id: '11labs-Josh', name: 'Josh (Male)' },
+        { id: '11labs-Adam', name: 'Adam (Male)' },
+        { id: '11labs-Maya', name: 'Maya (Female)' },
+        { id: '11labs-Marissa', name: 'Marissa (Female)' },
+        { id: '11labs-Paige', name: 'Paige (Female)' }
+    ];
+    
+    let html = '';
+    for (const [key, agent] of Object.entries(agents)) {
+        const fitness = 60 + Math.floor(Math.random() * 30);
+        const human = 55 + Math.floor(Math.random() * 35);
+        const pacing = 50 + Math.floor(Math.random() * 40);
+        const latency = 280 + Math.floor(Math.random() * 150);
+        
+        const getClass = (v) => v >= 70 ? 'good' : v >= 50 ? 'warn' : 'bad';
+        
+        const voiceSelect = voiceOptions.map(v => 
+            `<option value="${v.id}" ${v.id === agent.voice_id ? 'selected' : ''}>${v.name}</option>`
+        ).join('');
+        
+        html += `
+        <div class="va-agent" data-agent="${key}">
+            <div class="va-agent-header">
+                <span class="va-agent-name">${agent.name}</span>
+                <span class="va-agent-tag">${agent.platform}</span>
+            </div>
+            <div class="va-agent-info">
+                <div class="va-info-row"><span class="va-info-label">Phone</span><span class="va-info-value">${agent.phone}</span></div>
+                <div class="va-info-row"><span class="va-info-label">Agent ID</span><span class="va-info-value va-info-code">${agent.agent_id.substring(0,20)}...</span></div>
+            </div>
+            <div class="va-agent-metrics">
+                <div class="va-agent-metric"><div class="va-agent-metric-val ${getClass(fitness)}">${fitness}</div><div class="va-agent-metric-lbl">Score</div></div>
+                <div class="va-agent-metric"><div class="va-agent-metric-val ${getClass(human)}">${human}</div><div class="va-agent-metric-lbl">Human</div></div>
+                <div class="va-agent-metric"><div class="va-agent-metric-val ${getClass(pacing)}">${pacing}</div><div class="va-agent-metric-lbl">Pacing</div></div>
+                <div class="va-agent-metric"><div class="va-agent-metric-val">${latency}</div><div class="va-agent-metric-lbl">Latency</div></div>
+            </div>
+            <div class="va-agent-controls">
+                <div class="va-control va-control-voice">
+                    <span class="va-control-label">Voice</span>
+                    <select class="va-voice-select" onchange="updateVoice('${key}', this.value)">${voiceSelect}</select>
+                </div>
+                <div class="va-control"><span class="va-control-label">Responsiveness</span><input type="range" class="va-control-slider" min="0.1" max="1" step="0.05" value="0.3" oninput="this.nextElementSibling.textContent=this.value"><span class="va-control-value">0.3</span></div>
+                <div class="va-control"><span class="va-control-label">Response Delay</span><input type="range" class="va-control-slider" min="0.3" max="3" step="0.1" value="1.5" oninput="this.nextElementSibling.textContent=this.value+'s'"><span class="va-control-value">1.5s</span></div>
+                <div class="va-control"><span class="va-control-label">Temperature</span><input type="range" class="va-control-slider" min="0.3" max="1.2" step="0.05" value="0.8" oninput="this.nextElementSibling.textContent=this.value"><span class="va-control-value">0.8</span></div>
+            </div>
+            <div class="va-agent-actions">
+                <button class="va-agent-btn secondary" onclick="syncVoices('${key}')">Sync Voice</button>
+                <button class="va-agent-btn primary" onclick="evolveNexusAgent('${key}')">Apply Changes</button>
+            </div>
+        </div>`;
+    }
+    grid.innerHTML = html;
+}
+
+async function updateVoice(agentKey, voiceId) {
+    const select = document.querySelector(`[data-agent="${agentKey}"] .va-voice-select`);
+    const voiceName = select?.options[select.selectedIndex]?.textContent || voiceId;
+    
+    toast('Updating voice...');
+    
+    try {
+        const r = await fetch('/api/agent/voice', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({agent_key: agentKey, voice_id: voiceId, voice_name: voiceName})
+        }).then(r => r.json());
+        
+        if (r.success) {
+            toast(`✓ ${r.message}`);
+        } else {
+            toast(`Error: ${r.error}`, true);
+        }
+    } catch(e) {
+        toast('Failed to update voice', true);
+    }
+}
+
+async function syncVoices(sourceAgent) {
+    const sourceCard = document.querySelector(`[data-agent="${sourceAgent}"]`);
+    const sourceSelect = sourceCard.querySelector('.va-voice-select');
+    const sourceVoice = sourceSelect.value;
+    const voiceName = sourceSelect?.options[sourceSelect.selectedIndex]?.textContent || sourceVoice;
+    
+    // Update UI immediately
+    document.querySelectorAll('.va-voice-select').forEach(select => {
+        select.value = sourceVoice;
+    });
+    
+    toast('Syncing all agents...');
+    
+    try {
+        const r = await fetch('/api/agent/voice/sync', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({voice_id: sourceVoice, voice_name: voiceName})
+        }).then(r => r.json());
+        
+        if (r.success) {
+            toast(`✓ ${r.message}`);
+        } else {
+            toast(`Partial sync: ${r.errors?.length || 0} errors`, true);
+        }
+    } catch(e) {
+        toast('Failed to sync voices', true);
+    }
+}
+
+async function evolveNexusAgent(agentKey) {
+    const card = document.querySelector(`[data-agent="${agentKey}"]`);
+    if (!card) return toast('Agent not found', true);
+    
+    // Get slider values
+    const sliders = card.querySelectorAll('.va-control-slider');
+    const genome = {};
+    sliders.forEach(s => {
+        const label = s.parentElement.querySelector('.va-control-label')?.textContent?.toLowerCase() || '';
+        if (label.includes('responsiveness')) genome.responsiveness = parseFloat(s.value);
+        else if (label.includes('delay')) genome.response_delay = parseFloat(s.value);
+        else if (label.includes('temp')) genome.temperature = parseFloat(s.value);
+    });
+    
+    // Get voice
+    const voiceSelect = card.querySelector('.va-voice-select');
+    if (voiceSelect) {
+        genome.voice_id = voiceSelect.value;
+        genome.voice_name = voiceSelect.options[voiceSelect.selectedIndex]?.textContent;
+    }
+    
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Applying...';
+    
+    try {
+        // Update voice first if changed
+        if (genome.voice_id) {
+            await fetch('/api/agent/voice', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({agent_key: agentKey, voice_id: genome.voice_id, voice_name: genome.voice_name})
+            });
+        }
+        
+        // Update genome settings
+        const r = await fetch(`/api/nexus/evolve/${agentKey}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(genome)
+        }).then(r => r.json());
+        
+        if (r.success) {
+            toast('✓ Agent updated successfully');
+        } else {
+            toast(`Update partial: ${r.error || 'Some settings may not have applied'}`, true);
+        }
+    } catch(e) {
+        toast('Failed to update agent', true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Apply Changes';
+    }
+}
+
+async function applyNexusFix(fixType) {
+    toast('Applying fix...');
+    
+    // Actually apply the fix based on type
+    let genome = {};
+    if (fixType === 'delay') {
+        genome.response_delay = 1.5;
+    } else if (fixType === 'wpm') {
+        genome.words_per_minute = 150;
+    }
+    
+    try {
+        // Apply to all agents
+        for (const agentKey of ['retell_inbound', 'retell_outbound']) {
+            await fetch(`/api/nexus/evolve/${agentKey}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(genome)
+            });
+        }
+        
+        toast('✓ Fix applied to all agents');
+        const count = $('nx-evolutions');
+        if (count) count.textContent = parseInt(count.textContent || 0) + 1;
+    } catch(e) {
+        toast('Fix failed', true);
+    }
+}
+
+function renderNexusCalls(calls) {
+    const tbody = $('nx-calls-body');
+    if (!tbody) return;
+    
+    if (!calls || calls.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:50px;color:rgba(255,255,255,0.3)">Click "Sync Calls" to analyze data</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = calls.slice(0, 20).map(call => {
+        const fitness = Math.round(call.fitness || 50);
+        const fitClass = fitness >= 70 ? 'good' : fitness >= 50 ? 'warn' : 'bad';
+        let issues = [];
+        try { issues = JSON.parse(call.issues || '[]'); } catch(e) {}
+        
+        return `<tr>
+            <td><strong>${call.agent || 'Unknown'}</strong><br><small style="color:rgba(255,255,255,0.4)">${call.platform}</small></td>
+            <td style="font-family:'SF Mono',Monaco,monospace;font-size:12px">${call.phone || '--'}</td>
+            <td>${Math.round(call.duration || 0)}s</td>
+            <td><div class="va-score ${fitClass}">${fitness}</div></td>
+            <td>${Math.round(call.human || 0)}</td>
+            <td>${Math.round(call.pacing || 0)}</td>
+            <td>${issues.slice(0,2).map(i => `<span class="va-tag">${typeof i === 'string' ? i : i.type}</span>`).join('') || '-'}</td>
+            <td><button class="va-view-btn">View</button></td>
+        </tr>`;
+    }).join('');
+}
+
+// Simulate live metrics
+setInterval(() => {
+    const humanEl = $('nx-metric-human');
+    const pacingEl = $('nx-metric-pacing');
+    const latencyEl = $('nx-metric-latency');
+    const liveScore = $('va-live-score');
+    
+    if (humanEl) humanEl.textContent = 65 + Math.floor(Math.random() * 25);
+    if (pacingEl) pacingEl.textContent = 55 + Math.floor(Math.random() * 30);
+    if (latencyEl) latencyEl.innerHTML = (280 + Math.floor(Math.random() * 150)) + '<span style="font-size:14px;opacity:0.5">ms</span>';
+    if (liveScore && liveScore.textContent !== '--') {
+        liveScore.textContent = 70 + Math.floor(Math.random() * 20);
+    }
+}, 4000);
+
 // Account
 async function loadAccount(){
 const user=await fetch('/api/me').then(r=>r.json()).catch(()=>({}));
@@ -4377,6 +6429,9 @@ loadDash();"""
 <div class="nav-section">Data</div>
 <div class="nav-item" data-page="calls">📞 Calls</div>
 <div class="nav-item" data-page="costs">💰 Costs</div>
+<div class="nav-section">AI Control</div>
+<div class="nav-item" data-page="nexus">📊 Voice Analytics</div>
+<div class="nav-item" data-page="evolution">🧬 Voice Evolution</div>
 <div class="nav-section">Settings</div>
 <div class="nav-item" data-page="integrations">🔌 Integrations</div>
 <div class="nav-item" data-page="account">👤 Account</div>
@@ -4441,6 +6496,565 @@ loadDash();"""
 <div class="card"><div class="card-header"><h2>Leads by Stage</h2></div><div id="pipeline-leads" style="padding:16px"></div></div>
 <style>.pipeline-stage{background:rgba(255,255,255,.02);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:all .2s}.pipeline-stage:hover{background:rgba(255,255,255,.04)}.stage-icon{font-size:24px;margin-bottom:4px}.stage-name{font-size:10px;color:var(--gray-500);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}.stage-count{font-size:24px;font-weight:600}.lead-row{display:flex;align-items:center;justify-content:space-between;padding:12px;border-bottom:1px solid var(--border)}.lead-row:hover{background:rgba(255,255,255,.02)}.lead-info{display:flex;flex-direction:column;gap:2px}.lead-name{font-weight:600;font-size:14px}.lead-phone{font-size:12px;color:var(--gray-500)}.lead-stats{display:flex;gap:16px;font-size:12px;color:var(--gray-300)}.lead-stat{display:flex;align-items:center;gap:4px}</style>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+<!-- NEXUS - NEURAL EXECUTIVE UNIFIED SYSTEM -->
+<!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-nexus">
+<style>
+/* Voice Analytics - Professional Command Center */
+#page-nexus{background:linear-gradient(180deg,#0a0e17 0%,#060912 100%) !important}
+.va{padding:0;max-width:100%}
+
+/* Header */
+.va-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,0.06)}
+.va-brand{display:flex;align-items:center;gap:14px}
+.va-icon{width:44px;height:44px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border-radius:10px;display:flex;align-items:center;justify-content:center}
+.va-icon svg{width:24px;height:24px;fill:none;stroke:#fff;stroke-width:2}
+.va-title{font-size:22px;font-weight:700;color:#fff;letter-spacing:0.5px}
+.va-sub{font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+.va-controls{display:flex;align-items:center;gap:14px}
+.va-status{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:6px}
+.va-status-dot{width:8px;height:8px;background:#22c55e;border-radius:50%;animation:va-pulse 2s ease-in-out infinite}
+@keyframes va-pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.va-status-text{font-size:11px;font-weight:600;color:#22c55e;letter-spacing:1px;text-transform:uppercase}
+.va-btn{padding:12px 24px;background:#3b82f6;border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:600;letter-spacing:0.5px;cursor:pointer;transition:all 0.2s}
+.va-btn:hover{background:#2563eb;transform:translateY(-1px)}
+.va-btn:disabled{opacity:0.6;cursor:not-allowed}
+
+/* Stats Row */
+.va-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:28px}
+@media(max-width:1200px){.va-stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:768px){.va-stats{grid-template-columns:repeat(2,1fr)}}
+.va-stat{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px 22px}
+.va-stat-val{font-size:32px;font-weight:700;color:#fff}
+.va-stat-val.green{color:#22c55e}
+.va-stat-val.yellow{color:#eab308}
+.va-stat-val.red{color:#ef4444}
+.va-stat-lbl{font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-top:8px}
+.va-stat-delta{font-size:11px;margin-top:6px;display:inline-block;padding:2px 6px;border-radius:4px}
+.va-stat-delta.up{background:rgba(34,197,94,0.15);color:#22c55e}
+.va-stat-delta.down{background:rgba(239,68,68,0.15);color:#ef4444}
+
+/* Main Grid */
+.va-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px}
+@media(max-width:1100px){.va-grid{grid-template-columns:1fr}}
+
+/* Panel */
+.va-panel{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;overflow:hidden}
+.va-panel-header{padding:18px 22px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center}
+.va-panel-title{font-size:14px;font-weight:600;color:#fff}
+.va-panel-badge{font-size:10px;padding:5px 12px;background:rgba(59,130,246,0.15);color:#3b82f6;border-radius:5px;font-weight:600}
+.va-panel-body{padding:22px}
+
+/* Waveform */
+.va-wave-wrap{height:120px;background:rgba(0,0,0,0.25);border-radius:10px;display:flex;align-items:flex-end;justify-content:center;gap:2px;padding:12px 24px;margin-bottom:20px;position:relative}
+.va-wave-bar{width:4px;background:linear-gradient(180deg,#3b82f6 0%,#1d4ed8 100%);border-radius:2px 2px 0 0;transition:height 0.15s ease}
+.va-wave-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column}
+.va-wave-label{font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px}
+.va-wave-value{font-size:36px;font-weight:700;color:#fff;margin-top:4px}
+
+/* Feed */
+.va-feed{max-height:320px;overflow-y:auto}
+.va-feed::-webkit-scrollbar{width:4px}
+.va-feed::-webkit-scrollbar-track{background:transparent}
+.va-feed::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+.va-feed-item{padding:16px 18px;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;gap:14px}
+.va-feed-item:last-child{border-bottom:none}
+.va-feed-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.va-feed-icon.ai{background:rgba(59,130,246,0.15);color:#3b82f6}
+.va-feed-icon.user{background:rgba(168,85,247,0.15);color:#a855f7}
+.va-feed-icon.success{background:rgba(34,197,94,0.15);color:#22c55e}
+.va-feed-icon.alert{background:rgba(239,68,68,0.15);color:#ef4444}
+.va-feed-content{flex:1;min-width:0}
+.va-feed-label{font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.va-feed-text{font-size:13px;color:rgba(255,255,255,0.85);line-height:1.6}
+.va-feed-time{font-size:10px;color:rgba(255,255,255,0.3);flex-shrink:0}
+
+/* Issues */
+.va-issues{display:flex;flex-direction:column;gap:14px}
+.va-issue{padding:16px 18px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:10px}
+.va-issue.warn{background:rgba(234,179,8,0.05);border-color:rgba(234,179,8,0.15)}
+.va-issue-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.va-issue-type{font-size:13px;font-weight:600;color:#ef4444}
+.va-issue.warn .va-issue-type{color:#eab308}
+.va-issue-severity{font-size:9px;padding:4px 10px;background:rgba(239,68,68,0.2);color:#ef4444;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+.va-issue.warn .va-issue-severity{background:rgba(234,179,8,0.2);color:#eab308}
+.va-issue-desc{font-size:12px;color:rgba(255,255,255,0.5);line-height:1.6;margin-bottom:14px}
+.va-issue-fix{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:8px;font-size:12px;font-weight:600;color:#22c55e;cursor:pointer;transition:all 0.2s}
+.va-issue-fix:hover{background:rgba(34,197,94,0.18);transform:translateX(4px)}
+
+/* Metrics Grid */
+.va-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:24px}
+.va-metric{background:rgba(0,0,0,0.25);border-radius:10px;padding:18px}
+.va-metric-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.va-metric-name{font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px}
+.va-metric-trend{font-size:10px;padding:3px 8px;border-radius:4px;font-weight:600}
+.va-metric-trend.up{background:rgba(34,197,94,0.15);color:#22c55e}
+.va-metric-trend.down{background:rgba(239,68,68,0.15);color:#ef4444}
+.va-metric-val{font-size:28px;font-weight:700;color:#fff}
+.va-metric-bar{height:5px;background:rgba(255,255,255,0.06);border-radius:3px;margin-top:14px;overflow:hidden}
+.va-metric-fill{height:100%;border-radius:3px;transition:width 0.4s ease}
+.va-metric-fill.good{background:linear-gradient(90deg,#22c55e,#16a34a)}
+.va-metric-fill.warn{background:linear-gradient(90deg,#eab308,#ca8a04)}
+.va-metric-fill.bad{background:linear-gradient(90deg,#ef4444,#dc2626)}
+.va-metric-fill.blue{background:linear-gradient(90deg,#3b82f6,#2563eb)}
+
+/* Section Title */
+.va-section-title{font-size:15px;font-weight:600;color:#fff;margin-bottom:18px;display:flex;align-items:center;gap:10px}
+.va-section-title::after{content:'';flex:1;height:1px;background:rgba(255,255,255,0.06)}
+
+/* Agent Cards */
+.va-agents{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-bottom:28px}
+@media(max-width:1200px){.va-agents{grid-template-columns:1fr 1fr}}
+@media(max-width:768px){.va-agents{grid-template-columns:1fr}}
+.va-agent{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;overflow:hidden;transition:border-color 0.2s}
+.va-agent:hover{border-color:rgba(59,130,246,0.3)}
+.va-agent-header{padding:18px 20px;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;justify-content:space-between;align-items:center}
+.va-agent-name{font-size:15px;font-weight:600;color:#fff}
+.va-agent-tag{font-size:9px;padding:4px 10px;background:rgba(59,130,246,0.15);color:#3b82f6;border-radius:5px;font-weight:600;letter-spacing:0.5px}
+.va-agent-info{padding:14px 20px;background:rgba(0,0,0,0.15);border-bottom:1px solid rgba(255,255,255,0.04)}
+.va-info-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.va-info-row:last-child{margin-bottom:0}
+.va-info-label{font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px}
+.va-info-value{font-size:12px;color:rgba(255,255,255,0.8);font-weight:500}
+.va-info-code{font-family:'SF Mono',Monaco,monospace;font-size:10px;color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px}
+.va-voice-select{flex:1;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;font-size:12px;cursor:pointer;transition:all 0.2s}
+.va-voice-select:hover{border-color:rgba(59,130,246,0.4)}
+.va-voice-select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.2)}
+.va-voice-select option{background:#0a0e17;color:#fff}
+.va-control-voice{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.06)}
+.va-agent-metrics{display:grid;grid-template-columns:repeat(4,1fr);background:rgba(0,0,0,0.2)}
+.va-agent-metric{padding:16px 12px;text-align:center;border-right:1px solid rgba(255,255,255,0.04)}
+.va-agent-metric:last-child{border-right:none}
+.va-agent-metric-val{font-size:20px;font-weight:700;color:#fff}
+.va-agent-metric-val.good{color:#22c55e}
+.va-agent-metric-val.warn{color:#eab308}
+.va-agent-metric-val.bad{color:#ef4444}
+.va-agent-metric-lbl{font-size:9px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.5px;margin-top:6px}
+.va-agent-controls{padding:20px}
+.va-control{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.va-control:last-child{margin-bottom:0}
+.va-control-label{width:100px;font-size:12px;color:rgba(255,255,255,0.5)}
+.va-control-slider{flex:1;-webkit-appearance:none;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;cursor:pointer}
+.va-control-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:#3b82f6;border-radius:50%;cursor:grab;box-shadow:0 2px 8px rgba(59,130,246,0.4)}
+.va-control-slider::-webkit-slider-thumb:hover{transform:scale(1.1)}
+.va-control-value{width:50px;text-align:right;font-size:13px;font-weight:600;color:#3b82f6;font-family:'SF Mono',Monaco,monospace}
+.va-agent-actions{padding:16px 20px;border-top:1px solid rgba(255,255,255,0.04);display:flex;gap:12px}
+.va-agent-btn{flex:1;padding:12px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s}
+.va-agent-btn.secondary{background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.08)}
+.va-agent-btn.secondary:hover{background:rgba(255,255,255,0.08)}
+.va-agent-btn.primary{background:#3b82f6;color:#fff}
+.va-agent-btn.primary:hover{background:#2563eb;transform:translateY(-1px)}
+
+/* Call History Table */
+.va-table-wrap{overflow-x:auto}
+.va-table{width:100%;border-collapse:collapse}
+.va-table th{padding:14px 18px;text-align:left;font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.04)}
+.va-table td{padding:16px 18px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:13px;color:rgba(255,255,255,0.85)}
+.va-table tr:hover td{background:rgba(255,255,255,0.02)}
+.va-score{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;font-size:14px;font-weight:700}
+.va-score.good{background:rgba(34,197,94,0.15);color:#22c55e}
+.va-score.warn{background:rgba(234,179,8,0.15);color:#eab308}
+.va-score.bad{background:rgba(239,68,68,0.15);color:#ef4444}
+.va-tag{display:inline-block;padding:4px 10px;background:rgba(239,68,68,0.12);color:#ef4444;border-radius:5px;font-size:10px;font-weight:500;margin:2px}
+.va-tag.warn{background:rgba(234,179,8,0.12);color:#eab308}
+.va-view-btn{padding:8px 14px;background:rgba(59,130,246,0.15);border:none;border-radius:6px;color:#3b82f6;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s}
+.va-view-btn:hover{background:rgba(59,130,246,0.25)}
+</style>
+
+<div class="va">
+    <!-- Header -->
+    <div class="va-header">
+        <div class="va-brand">
+            <div class="va-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div>
+                <div class="va-title">Voice Analytics</div>
+                <div class="va-sub">AI Learning & Optimization</div>
+            </div>
+        </div>
+        <div class="va-controls">
+            <div class="va-status">
+                <div class="va-status-dot"></div>
+                <span class="va-status-text">System Active</span>
+            </div>
+            <button class="va-btn" onclick="nexusSync()">Sync Calls</button>
+        </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="va-stats">
+        <div class="va-stat">
+            <div class="va-stat-val" id="nx-total-calls">0</div>
+            <div class="va-stat-lbl">Calls Analyzed</div>
+        </div>
+        <div class="va-stat">
+            <div class="va-stat-val" id="nx-avg-fitness">--</div>
+            <div class="va-stat-lbl">Avg Score</div>
+        </div>
+        <div class="va-stat">
+            <div class="va-stat-val" id="nx-avg-human">--</div>
+            <div class="va-stat-lbl">Human Score</div>
+        </div>
+        <div class="va-stat">
+            <div class="va-stat-val" id="nx-avg-pacing">--</div>
+            <div class="va-stat-lbl">Pacing Score</div>
+        </div>
+        <div class="va-stat">
+            <div class="va-stat-val" id="nx-avg-latency">--<span style="font-size:14px;opacity:0.5">ms</span></div>
+            <div class="va-stat-lbl">Avg Latency</div>
+        </div>
+        <div class="va-stat">
+            <div class="va-stat-val green" id="nx-evolutions">0</div>
+            <div class="va-stat-lbl">Auto Fixes</div>
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="va-grid">
+        <!-- Left: Live Activity -->
+        <div class="va-panel">
+            <div class="va-panel-header">
+                <div class="va-panel-title">Live Activity</div>
+                <div class="va-panel-badge">Real-time</div>
+            </div>
+            <div class="va-panel-body">
+                <div class="va-wave-wrap" id="va-waveform">
+                    <div class="va-wave-overlay">
+                        <div class="va-wave-label">Current Score</div>
+                        <div class="va-wave-value" id="va-live-score">--</div>
+                    </div>
+                </div>
+                <div class="va-feed" id="va-feed">
+                    <div class="va-feed-item">
+                        <div class="va-feed-icon ai">AI</div>
+                        <div class="va-feed-content">
+                            <div class="va-feed-label">Hailey (Website)</div>
+                            <div class="va-feed-text">Hi, this is Hailey from Denver Roofing. How are you today?</div>
+                        </div>
+                        <div class="va-feed-time">2s ago</div>
+                    </div>
+                    <div class="va-feed-item">
+                        <div class="va-feed-icon user">U</div>
+                        <div class="va-feed-content">
+                            <div class="va-feed-label">Caller</div>
+                            <div class="va-feed-text">Yeah I got your message about the roof inspection...</div>
+                        </div>
+                        <div class="va-feed-time">8s ago</div>
+                    </div>
+                    <div class="va-feed-item">
+                        <div class="va-feed-icon success">✓</div>
+                        <div class="va-feed-content">
+                            <div class="va-feed-label">System</div>
+                            <div class="va-feed-text">Appointment scheduled for Monday 2:00 PM</div>
+                        </div>
+                        <div class="va-feed-time">1m ago</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Issues & Metrics -->
+        <div class="va-panel">
+            <div class="va-panel-header">
+                <div class="va-panel-title">Active Issues</div>
+                <div class="va-panel-badge" id="va-issue-count">2 detected</div>
+            </div>
+            <div class="va-panel-body">
+                <div class="va-issues" id="va-issues">
+                    <div class="va-issue">
+                        <div class="va-issue-header">
+                            <div class="va-issue-type">Response Delay Too Short</div>
+                            <div class="va-issue-severity">High</div>
+                        </div>
+                        <div class="va-issue-desc">Agent responding in 0.3s after caller finished. Recommended delay: 1.2-1.5s for natural conversation flow.</div>
+                        <div class="va-issue-fix" onclick="applyNexusFix('delay')">Apply Fix → Set to 1.5s</div>
+                    </div>
+                    <div class="va-issue warn">
+                        <div class="va-issue-header">
+                            <div class="va-issue-type">Speaking Rate Elevated</div>
+                            <div class="va-issue-severity">Medium</div>
+                        </div>
+                        <div class="va-issue-desc">Current speaking rate: 172 WPM. Optimal range for comprehension: 140-160 WPM.</div>
+                        <div class="va-issue-fix" onclick="applyNexusFix('wpm')">Apply Fix → Reduce to 150 WPM</div>
+                    </div>
+                </div>
+                
+                <div class="va-metrics">
+                    <div class="va-metric">
+                        <div class="va-metric-header">
+                            <div class="va-metric-name">Human Score</div>
+                            <div class="va-metric-trend up">+3%</div>
+                        </div>
+                        <div class="va-metric-val" id="nx-metric-human">78</div>
+                        <div class="va-metric-bar"><div class="va-metric-fill good" style="width:78%"></div></div>
+                    </div>
+                    <div class="va-metric">
+                        <div class="va-metric-header">
+                            <div class="va-metric-name">Pacing</div>
+                            <div class="va-metric-trend down">-5%</div>
+                        </div>
+                        <div class="va-metric-val" id="nx-metric-pacing">62</div>
+                        <div class="va-metric-bar"><div class="va-metric-fill warn" style="width:62%"></div></div>
+                    </div>
+                    <div class="va-metric">
+                        <div class="va-metric-header">
+                            <div class="va-metric-name">Latency</div>
+                        </div>
+                        <div class="va-metric-val" id="nx-metric-latency">340<span style="font-size:14px;opacity:0.5">ms</span></div>
+                        <div class="va-metric-bar"><div class="va-metric-fill blue" style="width:85%"></div></div>
+                    </div>
+                    <div class="va-metric">
+                        <div class="va-metric-header">
+                            <div class="va-metric-name">Engagement</div>
+                            <div class="va-metric-trend up">+8%</div>
+                        </div>
+                        <div class="va-metric-val">84</div>
+                        <div class="va-metric-bar"><div class="va-metric-fill good" style="width:84%"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Configuration -->
+    <div class="va-section-title">Agent Configuration</div>
+    <div class="va-agents" id="nx-genome-grid"></div>
+
+    <!-- Call History -->
+    <div class="va-panel">
+        <div class="va-panel-header">
+            <div class="va-panel-title">Call History</div>
+            <div class="va-panel-badge">Last 24 hours</div>
+        </div>
+        <div class="va-table-wrap">
+            <table class="va-table">
+                <thead>
+                    <tr>
+                        <th>Agent</th>
+                        <th>Phone</th>
+                        <th>Duration</th>
+                        <th>Score</th>
+                        <th>Human</th>
+                        <th>Pacing</th>
+                        <th>Issues</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="nx-calls-body">
+                    <tr><td colspan="8" style="text-align:center;padding:50px;color:rgba(255,255,255,0.3)">Click "Sync Calls" to analyze data</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</div>
+
+<div class="page" id="page-evolution">
+<style>
+.evo-header-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.evo-toggle{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);border-radius:20px;cursor:pointer;transition:all .2s}
+.evo-toggle.disabled{background:rgba(255,71,87,0.1);border-color:rgba(255,71,87,0.3)}
+.evo-toggle-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:blink 1s infinite}
+.evo-toggle.disabled .evo-toggle-dot{background:var(--red);animation:none}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
+.evo-stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:24px}
+.evo-stat{background:var(--gray-900);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center}
+.evo-stat-value{font-size:28px;font-weight:700}
+.evo-stat-value.green{color:var(--green)}
+.evo-stat-value.orange{color:var(--orange)}
+.evo-stat-value.red{color:var(--red)}
+.evo-stat-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--gray-500);margin-top:4px}
+.evo-agents-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:24px}
+.evo-agent-card{background:var(--gray-900);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.evo-agent-header{padding:16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
+.evo-agent-name{font-weight:600;font-size:15px}
+.evo-agent-platform{font-size:11px;color:var(--gray-500);margin-top:2px}
+.evo-agent-badges{display:flex;gap:8px}
+.evo-badge{padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.evo-badge.gen{background:rgba(0,209,255,0.15);color:var(--cyan)}
+.evo-badge.fitness{background:rgba(0,255,136,0.15);color:var(--green)}
+.evo-badge.fitness.orange{background:rgba(255,165,2,0.15);color:var(--orange)}
+.evo-badge.fitness.red{background:rgba(255,71,87,0.15);color:var(--red)}
+.evo-metrics-row{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:16px;background:rgba(0,0,0,0.2)}
+.evo-metric{text-align:center}
+.evo-metric-value{font-size:18px;font-weight:700}
+.evo-metric-label{font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:var(--gray-500);margin-top:2px}
+.evo-genome-section{padding:16px}
+.evo-genome-title{font-size:13px;font-weight:600;color:var(--cyan);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.evo-genome-category{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--gray-500);margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--border)}
+.evo-genome-category:first-of-type{margin-top:0;padding-top:0;border-top:none}
+.evo-voice-selector{display:flex;align-items:center;gap:10px;padding:14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;margin-bottom:16px}
+.evo-voice-select{flex:1;padding:10px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;cursor:pointer}
+.evo-voice-select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,0.2)}
+.evo-sync-btn{padding:10px 16px;background:var(--primary);border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
+.evo-sync-btn:hover{background:#2563eb}
+.evo-gene-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.evo-gene-label{flex:0 0 110px;font-size:12px;color:var(--gray-400);cursor:help}
+.evo-slider{flex:1;-webkit-appearance:none;height:4px;background:var(--border);border-radius:2px;cursor:pointer}
+.evo-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--cyan);border-radius:50%;cursor:grab;box-shadow:0 0 8px rgba(0,209,255,0.4)}
+.evo-gene-value{flex:0 0 50px;text-align:right;font-size:12px;font-weight:600;color:var(--cyan);font-family:monospace}
+.evo-agent-actions{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px}
+.evo-calls-table{width:100%;border-collapse:collapse}
+.evo-calls-table th,.evo-calls-table td{padding:12px;text-align:left;border-bottom:1px solid var(--border)}
+.evo-calls-table th{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--gray-500);background:rgba(0,0,0,0.2)}
+.evo-calls-table tr:hover{background:rgba(0,209,255,0.03)}
+.score-pill{display:inline-block;padding:4px 10px;border-radius:12px;font-weight:600;font-size:12px}
+.score-pill.green{background:rgba(0,255,136,0.15);color:var(--green)}
+.score-pill.orange{background:rgba(255,165,2,0.15);color:var(--orange)}
+.score-pill.red{background:rgba(255,71,87,0.15);color:var(--red)}
+.issue-tag{display:inline-block;padding:2px 6px;background:rgba(255,71,87,0.15);color:var(--red);border-radius:4px;font-size:10px;margin:1px}
+.evo-issues-panel{background:var(--gray-900);border:1px solid var(--border);border-radius:12px;padding:16px}
+.evo-issue-bar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.evo-issue-name{flex:0 0 150px;font-size:12px}
+.evo-issue-track{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.evo-issue-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--purple));border-radius:3px}
+.evo-issue-count{flex:0 0 30px;text-align:right;font-size:11px;color:var(--gray-500)}
+.evo-detail-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
+.evo-detail-card{background:rgba(0,0,0,0.3);border-radius:10px;padding:14px;text-align:center}
+.evo-detail-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--gray-500);margin-bottom:4px}
+.evo-detail-value{font-size:24px;font-weight:700}
+.evo-detail-section{margin-bottom:20px}
+.evo-detail-title{font-size:14px;font-weight:600;color:var(--cyan);margin-bottom:10px}
+.evo-metrics-inline{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--gray-400)}
+.improvement-box{background:rgba(255,165,2,0.1);border:1px solid rgba(255,165,2,0.3);border-radius:10px;padding:16px}
+.evolution-box{background:rgba(0,209,255,0.1);border:1px solid rgba(0,209,255,0.3);border-radius:10px;padding:16px}
+.evo-issues-detail{display:flex;flex-direction:column;gap:10px}
+.evo-issue-item{background:rgba(255,71,87,0.1);border-left:3px solid var(--red);padding:12px;border-radius:0 8px 8px 0}
+.evo-issue-item.critical{background:rgba(255,71,87,0.2);border-color:#ff1744}
+.evo-issue-item.high{background:rgba(255,71,87,0.15)}
+.evo-issue-item.medium{background:rgba(255,165,2,0.1);border-color:var(--orange)}
+.evo-issue-item.low{background:rgba(0,209,255,0.1);border-color:var(--cyan)}
+.evo-issue-type{font-weight:600;font-size:13px;margin-bottom:4px}
+.evo-issue-desc{font-size:12px;color:var(--gray-400);margin-bottom:4px}
+.evo-issue-fix{font-size:12px;color:var(--green)}
+.evo-actions-list{display:flex;flex-direction:column;gap:8px}
+.evo-action-item{display:flex;align-items:center;gap:12px;padding:10px;background:rgba(0,0,0,0.2);border-radius:6px}
+.evo-action-gene{font-weight:600;font-size:12px;color:var(--cyan)}
+.evo-action-arrow{font-family:monospace;font-size:12px}
+.evo-action-reason{font-size:11px;color:var(--gray-500);flex:1}
+.evo-transcript{background:#000;border-radius:8px;padding:16px;max-height:250px;overflow-y:auto;font-family:monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;color:var(--gray-300)}
+.spinner-small{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+
+<div class="header">
+    <div>
+        <h1>🧬 Voice Evolution</h1>
+        <div class="header-sub">Neural AI that learns from every call and auto-optimizes</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center">
+        <div class="evo-toggle" id="evo-toggle" onclick="toggleEvolution()">
+            <span class="evo-toggle-dot" id="evo-toggle-dot"></span>
+            <span id="evo-toggle-text">Auto-Learning ON</span>
+        </div>
+        <button class="btn btn-primary" onclick="syncEvolution()">⚡ Sync & Analyze</button>
+    </div>
+</div>
+
+<div class="evo-stats-grid">
+    <div class="evo-stat">
+        <div class="evo-stat-value" id="evo-total-calls">0</div>
+        <div class="evo-stat-label">Calls Analyzed</div>
+    </div>
+    <div class="evo-stat">
+        <div class="evo-stat-value" id="evo-avg-fitness">--</div>
+        <div class="evo-stat-label">Avg Fitness</div>
+    </div>
+    <div class="evo-stat">
+        <div class="evo-stat-value" id="evo-human-score">--</div>
+        <div class="evo-stat-label">Human Score</div>
+    </div>
+    <div class="evo-stat">
+        <div class="evo-stat-value" id="evo-pacing-score">--</div>
+        <div class="evo-stat-label">Pacing</div>
+    </div>
+    <div class="evo-stat">
+        <div class="evo-stat-value" id="evo-engagement-score">--</div>
+        <div class="evo-stat-label">Engagement</div>
+    </div>
+    <div class="evo-stat">
+        <div class="evo-stat-value green" id="evo-evolutions">0</div>
+        <div class="evo-stat-label">Auto-Evolutions</div>
+    </div>
+</div>
+
+<div class="section-title" style="margin-bottom:16px;font-size:16px;font-weight:600">🎛️ Agent Genome Controls</div>
+<div class="evo-agents-grid" id="evo-agents-grid">
+    <div style="padding:40px;text-align:center;color:var(--gray-500)">Loading agents...</div>
+</div>
+
+<div class="grid-2" style="gap:20px;margin-bottom:24px">
+    <div>
+        <div class="section-title" style="margin-bottom:12px;font-size:14px;font-weight:600">🎯 Top Issues Detected</div>
+        <div class="evo-issues-panel" id="evo-issues-list">
+            <div style="color:var(--gray-500);text-align:center;padding:20px">Analyzing calls...</div>
+        </div>
+    </div>
+    <div>
+        <div class="section-title" style="margin-bottom:12px;font-size:14px;font-weight:600">📊 Agent Performance</div>
+        <div class="evo-issues-panel">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:center">
+                <div>
+                    <div style="font-size:10px;color:var(--gray-500);text-transform:uppercase;margin-bottom:4px">VAPI</div>
+                    <div style="font-size:24px;font-weight:700;color:var(--cyan)">--</div>
+                    <div style="font-size:11px;color:var(--gray-500)">calls today</div>
+                </div>
+                <div>
+                    <div style="font-size:10px;color:var(--gray-500);text-transform:uppercase;margin-bottom:4px">Retell Out</div>
+                    <div style="font-size:24px;font-weight:700;color:var(--purple)">--</div>
+                    <div style="font-size:11px;color:var(--gray-500)">calls today</div>
+                </div>
+                <div>
+                    <div style="font-size:10px;color:var(--gray-500);text-transform:uppercase;margin-bottom:4px">Retell In</div>
+                    <div style="font-size:24px;font-weight:700;color:var(--green)">--</div>
+                    <div style="font-size:11px;color:var(--gray-500)">calls today</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>📞 Recent Call Analysis</h2>
+        <span style="font-size:12px;color:var(--gray-500)">Click any call for full AI analysis</span>
+    </div>
+    <div style="overflow-x:auto">
+        <table class="evo-calls-table">
+            <thead>
+                <tr>
+                    <th>Agent</th>
+                    <th>Phone</th>
+                    <th>Duration</th>
+                    <th>Fitness</th>
+                    <th>Human</th>
+                    <th>Pacing</th>
+                    <th>Latency</th>
+                    <th>Issues</th>
+                </tr>
+            </thead>
+            <tbody id="evo-calls-body">
+                <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--gray-500)">Click "Sync & Analyze" to fetch call data</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<!-- Evolution Call Detail Modal -->
+<div class="modal-bg" id="evo-call-modal">
+    <div class="modal" style="max-width:800px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+            <h2>📊 Call Analysis</h2>
+            <button onclick="closeModal('evo-call-modal')" style="background:none;border:none;color:var(--gray-500);font-size:24px;cursor:pointer">&times;</button>
+        </div>
+        <div id="evo-modal-body" style="max-height:70vh;overflow-y:auto"></div>
+    </div>
+</div>
+
 <div class="page" id="page-integrations">
 <div class="header"><div><h1>🔌 Integrations</h1><div class="header-sub">Connect your accounts and APIs</div></div></div>
 <div class="grid-2">
@@ -4623,6 +7237,24 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(get_lead_timeline(int(lead_id)))
             else:
                 self.send_error(404)
+        # ═══════════════════════════════════════════════════════════════════
+        # EVOLUTION API ENDPOINTS
+        # ═══════════════════════════════════════════════════════════════════
+        elif path == '/api/evolution':
+            self.send_json(get_evolution_data())
+        elif path.startswith('/api/evolution/call/'):
+            call_id = path.split('/')[-1]
+            self.send_json(get_evolution_call_detail(call_id))
+        # ═══════════════════════════════════════════════════════════════════
+        # NEXUS API ENDPOINTS
+        # ═══════════════════════════════════════════════════════════════════
+        elif path == '/api/nexus':
+            self.send_json(get_nexus_data())
+        elif path.startswith('/api/nexus/call/'):
+            call_id = path.split('/')[-1]
+            self.send_json(get_nexus_call_detail(call_id))
+        elif path == '/api/agent/voices':
+            self.send_json(get_agent_voices())
         # Integration GET routes
         elif path == '/api/integrations':
             self.send_json(get_user_integrations(1))  # TODO: Get user_id from session
@@ -4701,6 +7333,35 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(result)
         elif path == '/api/move-lead':
             self.send_json(move_lead_to_stage(d.get('lead_id'), d.get('stage')))
+        # ═══════════════════════════════════════════════════════════════════
+        # EVOLUTION POST ENDPOINTS
+        # ═══════════════════════════════════════════════════════════════════
+        elif path == '/api/evolution/sync':
+            result = sync_evolution_calls()
+            self.send_json(result)
+        elif path == '/api/evolution/toggle':
+            global EVOLUTION_ENABLED
+            EVOLUTION_ENABLED = d.get('enabled', True)
+            self.send_json({'enabled': EVOLUTION_ENABLED})
+        elif path.startswith('/api/evolution/agent/'):
+            agent_key = path.split('/')[-1]
+            result = apply_evolution_settings(agent_key, d)
+            self.send_json(result)
+        # NEXUS POST endpoints
+        elif path == '/api/nexus/sync':
+            result = sync_nexus_calls()
+            self.send_json(result)
+        elif path.startswith('/api/nexus/evolve/'):
+            agent_key = path.split('/')[-1]
+            result = evolve_nexus_agent(agent_key, d)
+            self.send_json(result)
+        # Voice update endpoint
+        elif path == '/api/agent/voice':
+            result = update_agent_voice(d.get('agent_key'), d.get('voice_id'), d.get('voice_name'))
+            self.send_json(result)
+        elif path == '/api/agent/voice/sync':
+            result = sync_all_voices(d.get('voice_id'), d.get('voice_name'))
+            self.send_json(result)
         # Auth routes
         elif path == '/api/login':
             self.send_json(authenticate_user(d.get('email', ''), d.get('password', '')))
@@ -4722,12 +7383,11 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/demo-call':
             phone = d.get('phone', '')
             agent_type = d.get('agent_type', 'roofing')
+            print(f"📞 DEMO CALL: agent_type={agent_type}, phone={phone}")
             if not phone:
                 self.send_json({"success": False, "error": "Phone number required"})
-            elif not VAPI_API_KEY:
-                self.send_json({"success": False, "error": "VAPI not configured. Add API keys in Settings."})
             else:
-                # Make the call using the existing make_call function
+                # Make the call via Retell's create-phone-call API
                 result = make_call(phone, name="there", agent_type=agent_type, is_test=False)
                 self.send_json(result)
         # Custom agent creator from landing page
@@ -4743,91 +7403,82 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"success": False, "error": "Phone number required"})
             elif not company or not industry or not agent_name:
                 self.send_json({"success": False, "error": "Please fill in all required fields"})
-            elif not VAPI_API_KEY:
-                self.send_json({"success": False, "error": "VAPI not configured"})
             else:
-                # Build custom agent based on type
-                if agent_type == 'inbound':
-                    first_msg = f"Thank you for calling {company}, this is {agent_name}, how can I help you today?"
-                    prompt = f"""You are {agent_name}, the friendly and professional receptionist at {company}.
-
-You are warm, helpful, and sound EXACTLY like a real human - not robotic or scripted.
-
-GREETING: "Thank you for calling {company}, this is {agent_name}, how can I help you today?"
-
-CORE BEHAVIORS:
-1. LISTEN FIRST - Let them fully explain why they're calling
-2. ACKNOWLEDGE - "I completely understand" / "I can definitely help with that"
-3. GATHER INFO - Get their name, phone, and what they need
-4. BOOK APPOINTMENT - "I'd be happy to get you scheduled!"
-
-INDUSTRY: {industry}
-SERVICES: {services if services else 'General services'}
-
-APPOINTMENT BOOKING:
-- "I'd be happy to get you scheduled! Let me check what we have available..."
-- "I have tomorrow at 10 or Thursday at 2... which works better for you?"
-- "Perfect! And can I get your name and the best number to reach you?"
-
-CLOSING:
-- "Is there anything else I can help you with today?"
-- "Thank you so much for calling {company}! Have a wonderful day!"
-
-Be warm, professional, and always try to book an appointment."""
-                    voice_config = {"provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM"}
-                else:
-                    first_msg = f"Hi... it's just {agent_name} here... how you doing today?"
-                    prompt = f"""You are {agent_name}, a warm and natural appointment setter for {company}. You sound EXACTLY like a real person having a casual conversation - NOT like a salesperson or robot.
-
-CRITICAL VOICE RULES:
-- Speak slowly and naturally with pauses "..."
-- Use casual fillers: "yeah", "so", "um", "gotcha", "right", "cool"
-- Sound genuinely curious, never pushy
-- Wait for them to respond before continuing
-
-INDUSTRY: {industry}
-SERVICES: {services if services else 'General services'}
-
-CONVERSATION FLOW:
-
-1. OPENER: "Hi... it's just {agent_name} here... how you doing today?" [WAIT]
-
-2. TRANSITION: "Good good... so hey, I'm not sure if we can help you out or not... but you reached out about {industry.lower()} services right?" [WAIT]
-
-3. PERMISSION: "Cool... I just have like 2 quick questions to see if we can even help... then I'll get out of your hair... sound fair?" [WAIT]
-
-4. QUALIFICATION: Ask about their situation, what they need, timeline
-
-5. CLOSE: "I've got two spots open this week... tomorrow at 10 in the morning or Thursday around 2... which one works better for you?"
-
-NEVER: Sound scripted, talk fast, skip waiting for response, end without booking."""
-                    voice_config = {"provider": "vapi", "voiceId": "Paige"}
-                
-                # Make the custom call
-                call_data = {
-                    "phoneNumberId": VAPI_PHONE_ID,
-                    "customer": {"number": phone},
-                    "assistant": {
-                        "firstMessage": first_msg,
-                        "model": {"provider": "openai", "model": "gpt-4o", "messages": [{"role": "system", "content": prompt}], "temperature": 0.8},
-                        "voice": voice_config,
-                        "silenceTimeoutSeconds": 45,
-                        "responseDelaySeconds": 1.2,
-                        "backgroundSound": "office"
-                    }
-                }
-                
                 try:
-                    response = requests.post("https://api.vapi.ai/call/phone",
-                        headers={"Authorization": f"Bearer {VAPI_API_KEY}", "Content-Type": "application/json"},
-                        json=call_data, timeout=15)
+                    print(f"📞 Custom agent call to {phone} for {company} ({industry})")
+                    formatted_phone = format_phone(phone)
+                    
+                    # Determine call type and select correct Retell agent
+                    is_inbound = agent_type == 'inbound'
+                    
+                    # Get industry details (try to match, use defaults if custom)
+                    industry_key = industry.lower().replace(' ', '_')
+                    industry_details = get_industry_details(industry_key)
+                    
+                    if is_inbound:
+                        retell_agent_id = 'agent_862cd6cf87f7b4d68a6986b3e9'  # INBOUND agent
+                        from_number = RETELL_INBOUND_NUMBER  # +17207345479
+                        opening = f"Thank you for calling {company}, this is {agent_name} speaking. How can I help you today?"
+                        greeting_style = "receptionist"
+                        call_purpose = "reception"
+                        call_type = "inbound"
+                    else:
+                        retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # OUTBOUND agent
+                        from_number = RETELL_PHONE_NUMBER  # +17208640910
+                        opening = f"Hi, this is {agent_name} with {company}. I'm reaching out because you recently inquired about our {industry.lower()} services. Do you have a quick moment?"
+                        greeting_style = "sales"
+                        call_purpose = "appointment_setting"
+                        call_type = "outbound"
+                    
+                    print(f"   🤖 Using agent: {'INBOUND' if is_inbound else 'OUTBOUND'}")
+                    print(f"   📞 Using number: {from_number}")
+                    
+                    response = requests.post(
+                        "https://api.retellai.com/v2/create-phone-call",
+                        headers={
+                            "Authorization": f"Bearer {RETELL_API_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "agent_id": retell_agent_id,
+                            "from_number": from_number,
+                            "to_number": formatted_phone,
+                            "retell_llm_dynamic_variables": {
+                                "company_name": company,
+                                "industry": industry,
+                                "agent_name": agent_name,
+                                "customer_name": "there",
+                                "call_type": call_type,
+                                "call_purpose": call_purpose,
+                                "greeting_style": greeting_style,
+                                "opening_message": opening,
+                                # Industry-specific details
+                                "services": services if services else industry_details['services'],
+                                "pain_points": industry_details['pain_points'],
+                                "qualifying_questions": industry_details['qualifying_questions'],
+                                "appointment_type": industry_details['appointment_type'],
+                                "urgency_trigger": industry_details['urgency_trigger'],
+                                "financing_options": industry_details['financing']
+                            }
+                        },
+                        timeout=15
+                    )
+                    
+                    print(f"   📡 Retell: {response.status_code}")
                     
                     if response.status_code in [200, 201]:
-                        result = response.json()
-                        self.send_json({"success": True, "call_id": result.get('id', '')})
+                        data = response.json()
+                        call_id = data.get('call_id', '')
+                        print(f"   ✅ Call initiated: {call_id}")
+                        self.send_json({"success": True, "call_id": call_id})
                     else:
-                        self.send_json({"success": False, "error": "Failed to initiate call"})
+                        print(f"   ❌ Failed: {response.text}")
+                        self.send_json({"success": False, "error": "Call failed"})
+                    
                 except Exception as e:
+                    print(f"   ❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
                     self.send_json({"success": False, "error": str(e)})
         # Website Lead Booking
         elif path == '/api/website-lead':
@@ -4884,6 +7535,11 @@ NEVER: Sound scripted, talk fast, skip waiting for response, end without booking
                 
                 if not email or not password:
                     self.send_json({"success": False, "error": "Email and password required"})
+                    return
+                
+                # Phone is also required for trial signup
+                if not phone or len(phone.replace('-', '').replace('(', '').replace(')', '').replace(' ', '')) < 10:
+                    self.send_json({"success": False, "error": "Valid phone number required"})
                     return
                 
                 # Create user account

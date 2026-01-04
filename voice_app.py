@@ -1352,6 +1352,69 @@ def init_db():
                  VALUES (?, ?, ?, ?, ?, ?, ?)''', 
               ('admin@voice.ai', admin_hash, admin_salt, 'Admin', 'admin', 1, 1))
     
+    # ═══════════════════════════════════════════════════════════════════════════
+    # MULTI-TENANT CLIENT TABLES
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    # Clients table (each business using your platform)
+    c.execute('''CREATE TABLE IF NOT EXISTS clients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT UNIQUE NOT NULL,
+        company_name TEXT NOT NULL,
+        contact_name TEXT,
+        email TEXT UNIQUE,
+        phone TEXT,
+        industry TEXT,
+        plan TEXT DEFAULT 'starter',
+        status TEXT DEFAULT 'active',
+        monthly_budget REAL DEFAULT 500.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    
+    # Client API integrations (each client's own credentials)
+    c.execute('''CREATE TABLE IF NOT EXISTS client_integrations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id INTEGER NOT NULL,
+        integration_type TEXT NOT NULL,
+        api_key TEXT,
+        api_secret TEXT,
+        webhook_url TEXT,
+        phone_number TEXT,
+        agent_id TEXT,
+        settings TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (client_id) REFERENCES clients(id)
+    )''')
+    
+    # Client costs tracking (real-time cost per client)
+    c.execute('''CREATE TABLE IF NOT EXISTS client_costs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        cost_type TEXT NOT NULL,
+        quantity REAL DEFAULT 0,
+        unit_cost REAL DEFAULT 0,
+        total_cost REAL DEFAULT 0,
+        description TEXT,
+        call_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (client_id) REFERENCES clients(id)
+    )''')
+    
+    # Add client_id to leads if not exists
+    try:
+        c.execute('ALTER TABLE leads ADD COLUMN client_id INTEGER DEFAULT 1')
+    except:
+        pass
+    
+    # Add client_id to call_log if not exists
+    try:
+        c.execute('ALTER TABLE call_log ADD COLUMN client_id INTEGER DEFAULT 1')
+    except:
+        pass
+    
     conn.commit()
     conn.close()
     print("✅ Database initialized")
@@ -1483,6 +1546,267 @@ def get_user_by_id(user_id):
     user = c.fetchone()
     conn.close()
     return dict(user) if user else None
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MULTI-TENANT CLIENT MANAGEMENT FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def generate_client_uuid():
+    """Generate unique client identifier"""
+    import uuid
+    return str(uuid.uuid4())[:8]
+
+def create_client(company_name, contact_name, email, phone, industry, plan='starter'):
+    """Create a new client"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    client_uuid = generate_client_uuid()
+    
+    try:
+        c.execute('''INSERT INTO clients 
+                     (uuid, company_name, contact_name, email, phone, industry, plan)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                  (client_uuid, company_name, contact_name, email, phone, industry, plan))
+        client_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        return {'success': True, 'id': client_id, 'uuid': client_uuid}
+    except sqlite3.IntegrityError as e:
+        conn.close()
+        return {'success': False, 'error': 'Email already exists'}
+    except Exception as e:
+        conn.close()
+        return {'success': False, 'error': str(e)}
+
+def get_all_clients():
+    """Get all clients for admin view"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    c.execute('''SELECT c.*, 
+                 (SELECT COUNT(*) FROM leads WHERE client_id = c.id) as lead_count,
+                 (SELECT COUNT(*) FROM call_log WHERE client_id = c.id) as call_count,
+                 (SELECT COALESCE(SUM(total_cost), 0) FROM client_costs WHERE client_id = c.id AND date >= date('now', '-30 days')) as monthly_cost
+                 FROM clients c ORDER BY c.created_at DESC''')
+    
+    columns = [desc[0] for desc in c.description]
+    clients = [dict(zip(columns, row)) for row in c.fetchall()]
+    
+    conn.close()
+    return clients
+
+def get_client(client_id):
+    """Get single client with full details"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    c.execute('SELECT * FROM clients WHERE id = ?', (client_id,))
+    columns = [desc[0] for desc in c.description]
+    row = c.fetchone()
+    
+    if not row:
+        conn.close()
+        return None
+    
+    client = dict(zip(columns, row))
+    
+    # Get integrations
+    c.execute('SELECT * FROM client_integrations WHERE client_id = ?', (client_id,))
+    columns = [desc[0] for desc in c.description]
+    client['integrations'] = [dict(zip(columns, row)) for row in c.fetchall()]
+    
+    # Get stats
+    c.execute('''SELECT COUNT(*) as total FROM leads WHERE client_id = ?''', (client_id,))
+    total_leads = c.fetchone()[0]
+    
+    c.execute('''SELECT COUNT(*) FROM leads WHERE client_id = ? AND status = 'appointment_set' ''', (client_id,))
+    appointments = c.fetchone()[0]
+    
+    c.execute('''SELECT COUNT(*) FROM leads WHERE client_id = ? AND status = 'sold' ''', (client_id,))
+    sold = c.fetchone()[0]
+    
+    client['stats'] = {
+        'total_leads': total_leads or 0,
+        'appointments': appointments or 0,
+        'sold': sold or 0
+    }
+    
+    # Get monthly cost
+    c.execute('''SELECT COALESCE(SUM(total_cost), 0) FROM client_costs 
+                 WHERE client_id = ? AND date >= date('now', '-30 days')''', (client_id,))
+    client['monthly_cost'] = c.fetchone()[0]
+    
+    conn.close()
+    return client
+
+def update_client(client_id, data):
+    """Update client details"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    fields = []
+    values = []
+    for key in ['company_name', 'contact_name', 'email', 'phone', 'industry', 'plan', 'status', 'monthly_budget']:
+        if key in data:
+            fields.append(f'{key} = ?')
+            values.append(data[key])
+    
+    if fields:
+        values.append(client_id)
+        c.execute(f'UPDATE clients SET {", ".join(fields)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?', values)
+        conn.commit()
+    
+    conn.close()
+    return {'success': True}
+
+def delete_client(client_id):
+    """Delete client and related data"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    c.execute('DELETE FROM client_integrations WHERE client_id = ?', (client_id,))
+    c.execute('DELETE FROM client_costs WHERE client_id = ?', (client_id,))
+    c.execute('DELETE FROM clients WHERE id = ?', (client_id,))
+    
+    conn.commit()
+    conn.close()
+    return {'success': True}
+
+def add_client_integration(client_id, integration_type, api_key=None, api_secret=None, 
+                           webhook_url=None, phone_number=None, agent_id=None, settings=None):
+    """Add integration for a client"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    c.execute('''INSERT INTO client_integrations 
+                 (client_id, integration_type, api_key, api_secret, webhook_url, phone_number, agent_id, settings)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+              (client_id, integration_type, api_key, api_secret, webhook_url, phone_number, agent_id,
+               json.dumps(settings) if settings else None))
+    
+    conn.commit()
+    conn.close()
+    return {'success': True}
+
+def get_client_integration(client_id, integration_type):
+    """Get specific integration for client"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    c.execute('''SELECT * FROM client_integrations 
+                 WHERE client_id = ? AND integration_type = ? AND is_active = 1''',
+              (client_id, integration_type))
+    
+    columns = [desc[0] for desc in c.description]
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        result = dict(zip(columns, row))
+        if result.get('settings'):
+            result['settings'] = json.loads(result['settings'])
+        return result
+    return None
+
+def update_client_integration(integration_id, data):
+    """Update client integration"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    fields = []
+    values = []
+    for key in ['api_key', 'api_secret', 'webhook_url', 'phone_number', 'agent_id', 'is_active']:
+        if key in data:
+            fields.append(f'{key} = ?')
+            values.append(data[key])
+    
+    if fields:
+        values.append(integration_id)
+        c.execute(f'UPDATE client_integrations SET {", ".join(fields)} WHERE id = ?', values)
+        conn.commit()
+    
+    conn.close()
+    return {'success': True}
+
+def delete_client_integration(integration_id):
+    """Delete client integration"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('DELETE FROM client_integrations WHERE id = ?', (integration_id,))
+    conn.commit()
+    conn.close()
+    return {'success': True}
+
+def log_client_cost(client_id, cost_type, quantity, unit_cost, description=None, call_id=None):
+    """Log a cost for a client"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    total_cost = quantity * unit_cost
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    c.execute('''INSERT INTO client_costs 
+                 (client_id, date, cost_type, quantity, unit_cost, total_cost, description, call_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+              (client_id, today, cost_type, quantity, unit_cost, total_cost, description, call_id))
+    
+    conn.commit()
+    conn.close()
+    return total_cost
+
+def get_client_costs(client_id, days=30):
+    """Get client costs for period"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    c.execute('''SELECT date, cost_type, SUM(quantity) as quantity, SUM(total_cost) as total
+                 FROM client_costs 
+                 WHERE client_id = ? AND date >= date('now', ?)
+                 GROUP BY date, cost_type
+                 ORDER BY date DESC''', (client_id, f'-{days} days'))
+    
+    columns = ['date', 'cost_type', 'quantity', 'total']
+    costs = [dict(zip(columns, row)) for row in c.fetchall()]
+    
+    # Get totals by type
+    c.execute('''SELECT cost_type, SUM(total_cost) as total
+                 FROM client_costs 
+                 WHERE client_id = ? AND date >= date('now', ?)
+                 GROUP BY cost_type''', (client_id, f'-{days} days'))
+    
+    totals = {row[0]: row[1] for row in c.fetchall()}
+    
+    conn.close()
+    return {'daily': costs, 'totals': totals, 'grand_total': sum(totals.values())}
+
+def get_admin_dashboard_stats():
+    """Get overall stats for admin dashboard"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    stats = {}
+    
+    # Total clients
+    c.execute('SELECT COUNT(*) FROM clients WHERE status = "active"')
+    stats['total_clients'] = c.fetchone()[0]
+    
+    # Total calls (last 30 days)
+    c.execute('SELECT COUNT(*) FROM call_log WHERE created_at >= date("now", "-30 days")')
+    stats['total_calls'] = c.fetchone()[0]
+    
+    # Total costs (last 30 days)
+    c.execute('SELECT COALESCE(SUM(total_cost), 0) FROM client_costs WHERE date >= date("now", "-30 days")')
+    stats['total_costs'] = c.fetchone()[0]
+    
+    # Revenue calculation (from plans)
+    c.execute('SELECT plan, COUNT(*) as count FROM clients WHERE status = "active" GROUP BY plan')
+    plan_counts = {row[0]: row[1] for row in c.fetchall()}
+    plan_prices = {'starter': 297, 'professional': 497, 'enterprise': 997}
+    stats['monthly_revenue'] = sum(plan_prices.get(plan, 297) * count for plan, count in plan_counts.items())
+    
+    conn.close()
+    return stats
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # INTEGRATIONS FUNCTIONS
@@ -3822,6 +4146,650 @@ def test_agent_with_phone(agent_type, phone=None, is_live=False):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ADMIN DASHBOARD - Multi-Tenant Client Management
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_admin_dashboard():
+    return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOICE Admin - Client Management</title>
+<style>
+:root{--bg:#0a0a0f;--card:#12121a;--border:#1e1e2e;--cyan:#00d1ff;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--gray:#6b7280;--text:#f5f5f5}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+.admin-layout{display:flex;min-height:100vh}
+.sidebar{width:260px;background:var(--card);border-right:1px solid var(--border);padding:24px 0;position:fixed;height:100vh;overflow-y:auto}
+.sidebar-logo{padding:0 24px 32px;font-size:24px;font-weight:700;color:var(--cyan);display:flex;align-items:center;gap:12px}
+.sidebar-logo svg{width:32px;height:32px}
+.sidebar-section{padding:8px 16px;font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-top:16px}
+.sidebar-item{display:flex;align-items:center;gap:12px;padding:12px 24px;color:var(--gray);text-decoration:none;transition:all .2s;cursor:pointer}
+.sidebar-item:hover{background:rgba(0,209,255,0.05);color:var(--text)}
+.sidebar-item.active{background:rgba(0,209,255,0.1);color:var(--cyan);border-right:3px solid var(--cyan)}
+
+.main-content{flex:1;margin-left:260px;padding:32px}
+.page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px}
+.page-title{font-size:28px;font-weight:700}
+
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:32px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px}
+.stat-card-label{font-size:13px;color:var(--gray);margin-bottom:8px}
+.stat-card-value{font-size:32px;font-weight:700}
+.stat-card-change{font-size:12px;margin-top:8px}
+.stat-card-change.up{color:var(--green)}
+.stat-card-change.down{color:var(--red)}
+
+.data-table{width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.data-table th,.data-table td{padding:16px;text-align:left;border-bottom:1px solid var(--border)}
+.data-table th{background:rgba(0,0,0,0.3);font-size:12px;text-transform:uppercase;color:var(--gray)}
+.data-table tr:hover{background:rgba(0,209,255,0.02)}
+.data-table tr:last-child td{border-bottom:none}
+
+.badge{padding:4px 12px;border-radius:100px;font-size:12px;font-weight:500;display:inline-block}
+.badge-active{background:rgba(16,185,129,0.1);color:var(--green)}
+.badge-starter{background:rgba(107,114,128,0.1);color:var(--gray)}
+.badge-professional{background:rgba(0,209,255,0.1);color:var(--cyan)}
+.badge-enterprise{background:rgba(168,85,247,0.1);color:#a855f7}
+
+.btn{padding:10px 20px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all .2s;border:none}
+.btn-primary{background:var(--cyan);color:#000}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,209,255,0.3)}
+.btn-secondary{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-icon{width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:8px;background:transparent;border:1px solid var(--border);color:var(--gray);cursor:pointer;font-size:14px}
+.btn-icon:hover{border-color:var(--cyan);color:var(--cyan)}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;z-index:1000}
+.modal-overlay.active{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:16px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto}
+.modal-header{padding:24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-title{font-size:20px;font-weight:600}
+.modal-close{background:none;border:none;color:var(--gray);font-size:24px;cursor:pointer}
+.modal-body{padding:24px}
+.modal-footer{padding:24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:12px}
+
+.form-group{margin-bottom:20px}
+.form-label{display:block;font-size:13px;color:var(--gray);margin-bottom:8px}
+.form-input{width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px}
+.form-input:focus{outline:none;border-color:var(--cyan)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+.client-header{display:flex;align-items:center;gap:24px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:16px;margin-bottom:24px}
+.client-avatar{width:80px;height:80px;background:linear-gradient(135deg,var(--cyan),#0066ff);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;color:#fff}
+.client-info h2{font-size:24px;margin-bottom:4px}
+.client-info p{color:var(--gray)}
+.client-meta{display:flex;gap:24px;margin-top:12px}
+.client-meta-item{font-size:13px;color:var(--gray)}
+.client-meta-item span{color:var(--text);font-weight:500}
+
+.tabs{display:flex;gap:4px;background:var(--card);padding:4px;border-radius:12px;margin-bottom:24px;width:fit-content}
+.tab{padding:10px 20px;border-radius:8px;font-size:14px;color:var(--gray);cursor:pointer;transition:all .2s;border:none;background:none}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--cyan);color:#000}
+
+.integrations-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.integration-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:20px}
+.integration-header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.integration-icon{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;background:rgba(0,209,255,0.1)}
+.integration-name{font-weight:600}
+.integration-status{font-size:12px;color:var(--gray)}
+.integration-status.connected{color:var(--green)}
+
+.cost-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}
+.cost-item{background:var(--bg);padding:20px;border-radius:12px;text-align:center}
+.cost-item-value{font-size:28px;font-weight:700;color:var(--cyan)}
+.cost-item-label{font-size:12px;color:var(--gray);margin-top:4px}
+
+.search-box{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 16px;width:300px}
+.search-box input{background:none;border:none;color:var(--text);flex:1;font-size:14px}
+.search-box input:focus{outline:none}
+
+.empty-state{text-align:center;padding:60px 20px;color:var(--gray)}
+.empty-state-icon{font-size:48px;margin-bottom:16px}
+
+@media(max-width:768px){
+    .sidebar{display:none}
+    .main-content{margin-left:0}
+    .form-row{grid-template-columns:1fr}
+    .stats-grid{grid-template-columns:1fr 1fr}
+    .client-header{flex-direction:column;text-align:center}
+    .client-meta{flex-direction:column;gap:8px}
+}
+</style>
+</head>
+<body>
+
+<div class="admin-layout">
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <svg viewBox="0 0 512 512"><circle cx="256" cy="256" r="180" stroke="#00D1FF" stroke-width="24" fill="none"/></svg>
+            <span>VOICE Admin</span>
+        </div>
+        
+        <div class="sidebar-section">Overview</div>
+        <a class="sidebar-item active" onclick="showPage('dashboard')">
+            <span>📊</span>
+            <span>Dashboard</span>
+        </a>
+        
+        <div class="sidebar-section">Clients</div>
+        <a class="sidebar-item" onclick="showPage('clients')">
+            <span>👥</span>
+            <span>All Clients</span>
+        </a>
+        
+        <div class="sidebar-section">Analytics</div>
+        <a class="sidebar-item" onclick="showPage('costs')">
+            <span>💰</span>
+            <span>Cost Tracking</span>
+        </a>
+        
+        <div class="sidebar-section">System</div>
+        <a class="sidebar-item" href="/">
+            <span>🌐</span>
+            <span>Main Site</span>
+        </a>
+        <a class="sidebar-item" href="/app">
+            <span>📱</span>
+            <span>CRM App</span>
+        </a>
+    </aside>
+
+    <main class="main-content">
+        
+        <!-- Dashboard -->
+        <div id="page-dashboard" class="page">
+            <div class="page-header">
+                <h1 class="page-title">Dashboard</h1>
+                <button class="btn btn-primary" onclick="openModal('add-client-modal')">+ Add Client</button>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-label">Total Clients</div>
+                    <div class="stat-card-value" id="stat-clients">0</div>
+                    <div class="stat-card-change up">Active accounts</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Total Calls</div>
+                    <div class="stat-card-value" id="stat-calls">0</div>
+                    <div class="stat-card-change up">Across all clients</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Monthly Revenue</div>
+                    <div class="stat-card-value" id="stat-revenue">$0</div>
+                    <div class="stat-card-change up">From subscriptions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Platform Costs</div>
+                    <div class="stat-card-value" id="stat-costs">$0</div>
+                    <div class="stat-card-change">Last 30 days</div>
+                </div>
+            </div>
+            
+            <h3 style="margin-bottom:16px">Recent Clients</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Industry</th>
+                        <th>Plan</th>
+                        <th>Leads</th>
+                        <th>Calls</th>
+                        <th>Cost (30d)</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="clients-table">
+                    <tr><td colspan="8" class="empty-state">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- All Clients -->
+        <div id="page-clients" class="page" style="display:none">
+            <div class="page-header">
+                <h1 class="page-title">All Clients</h1>
+                <div style="display:flex;gap:12px">
+                    <div class="search-box">
+                        <span>🔍</span>
+                        <input type="text" placeholder="Search clients..." id="search-input" oninput="filterClients()">
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('add-client-modal')">+ Add Client</button>
+                </div>
+            </div>
+            
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Contact</th>
+                        <th>Industry</th>
+                        <th>Plan</th>
+                        <th>Leads</th>
+                        <th>Calls</th>
+                        <th>Cost (30d)</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="all-clients-table">
+                    <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Client Detail -->
+        <div id="page-client-detail" class="page" style="display:none">
+            <div class="page-header">
+                <h1 class="page-title"><a href="#" onclick="showPage('clients');return false" style="color:var(--cyan);text-decoration:none">← Back</a></h1>
+            </div>
+            
+            <div class="client-header">
+                <div class="client-avatar" id="client-avatar">A</div>
+                <div class="client-info">
+                    <h2 id="client-name">Company Name</h2>
+                    <p id="client-email">email@company.com</p>
+                    <div class="client-meta">
+                        <div class="client-meta-item">Industry: <span id="client-industry">-</span></div>
+                        <div class="client-meta-item">Plan: <span id="client-plan">-</span></div>
+                        <div class="client-meta-item">Since: <span id="client-since">-</span></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-label">Total Leads</div>
+                    <div class="stat-card-value" id="client-leads">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Total Calls</div>
+                    <div class="stat-card-value" id="client-calls">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Appointments</div>
+                    <div class="stat-card-value" id="client-appointments">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Cost (30 days)</div>
+                    <div class="stat-card-value" id="client-cost">$0</div>
+                </div>
+            </div>
+            
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('integrations', this)">Integrations</button>
+                <button class="tab" onclick="switchTab('costs', this)">Cost Breakdown</button>
+            </div>
+            
+            <div id="tab-integrations">
+                <div class="integrations-grid" id="client-integrations"></div>
+                <button class="btn btn-secondary" style="margin-top:16px" onclick="openModal('add-integration-modal')">+ Add Integration</button>
+            </div>
+            
+            <div id="tab-costs" style="display:none">
+                <div class="cost-grid" id="client-cost-breakdown"></div>
+            </div>
+        </div>
+        
+        <!-- Costs Page -->
+        <div id="page-costs" class="page" style="display:none">
+            <div class="page-header">
+                <h1 class="page-title">Cost Tracking</h1>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-label">Total Platform Costs</div>
+                    <div class="stat-card-value" id="total-costs">$0</div>
+                    <div class="stat-card-change">Last 30 days</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Retell Voice</div>
+                    <div class="stat-card-value" id="retell-costs">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Twilio SMS</div>
+                    <div class="stat-card-value" id="twilio-costs">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Avg Cost/Client</div>
+                    <div class="stat-card-value" id="avg-cost">$0</div>
+                </div>
+            </div>
+            
+            <h3 style="margin-bottom:16px">Cost by Client</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Voice Calls</th>
+                        <th>SMS</th>
+                        <th>Other</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="cost-table"></tbody>
+            </table>
+        </div>
+        
+    </main>
+</div>
+
+<!-- Add Client Modal -->
+<div class="modal-overlay" id="add-client-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Add New Client</h3>
+            <button class="modal-close" onclick="closeModal('add-client-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Company Name *</label>
+                    <input type="text" class="form-input" id="new-company" placeholder="Acme Roofing">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contact Name</label>
+                    <input type="text" class="form-input" id="new-contact" placeholder="John Smith">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Email *</label>
+                    <input type="email" class="form-input" id="new-email" placeholder="john@acme.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="tel" class="form-input" id="new-phone" placeholder="(720) 123-4567">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Industry</label>
+                    <select class="form-input" id="new-industry">
+                        <option value="roofing">Roofing</option>
+                        <option value="solar">Solar</option>
+                        <option value="hvac">HVAC</option>
+                        <option value="plumbing">Plumbing</option>
+                        <option value="electrical">Electrical</option>
+                        <option value="insurance">Insurance</option>
+                        <option value="real_estate">Real Estate</option>
+                        <option value="auto">Auto Sales</option>
+                        <option value="dental">Dental</option>
+                        <option value="legal">Legal</option>
+                        <option value="medical">Medical</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Plan</label>
+                    <select class="form-input" id="new-plan">
+                        <option value="starter">Starter ($297/mo)</option>
+                        <option value="professional">Professional ($497/mo)</option>
+                        <option value="enterprise">Enterprise ($997/mo)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('add-client-modal')">Cancel</button>
+            <button class="btn btn-primary" onclick="createClient()">Create Client</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Integration Modal -->
+<div class="modal-overlay" id="add-integration-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Add Integration</h3>
+            <button class="modal-close" onclick="closeModal('add-integration-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Integration Type</label>
+                <select class="form-input" id="int-type">
+                    <option value="retell">Retell AI (Voice)</option>
+                    <option value="twilio">Twilio (SMS)</option>
+                    <option value="ghl">GoHighLevel (CRM)</option>
+                    <option value="zapier">Zapier</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <input type="text" class="form-input" id="int-api-key" placeholder="key_xxxxx">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Phone Number</label>
+                <input type="tel" class="form-input" id="int-phone" placeholder="+17201234567">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Agent ID (for Retell)</label>
+                <input type="text" class="form-input" id="int-agent" placeholder="agent_xxxxx">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('add-integration-modal')">Cancel</button>
+            <button class="btn btn-primary" onclick="saveIntegration()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let clients = [];
+let currentClientId = null;
+
+function showPage(page) {
+    document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    document.getElementById('page-' + page).style.display = 'block';
+    if (event && event.target) event.target.classList.add('active');
+    if (page === 'dashboard' || page === 'clients') loadClients();
+    if (page === 'costs') loadCosts();
+}
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function switchTab(tab, btn) {
+    document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-integrations').style.display = tab === 'integrations' ? 'block' : 'none';
+    document.getElementById('tab-costs').style.display = tab === 'costs' ? 'block' : 'none';
+}
+
+async function loadClients() {
+    try {
+        const res = await fetch('/api/admin/clients');
+        clients = await res.json();
+        renderClients();
+        updateStats();
+    } catch (e) { console.error(e); }
+}
+
+function renderClients() {
+    const html = clients.length ? clients.map(c => `
+        <tr>
+            <td>
+                <div style="display:flex;align-items:center;gap:12px">
+                    <div style="width:36px;height:36px;background:linear-gradient(135deg,var(--cyan),#0066ff);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:600;color:#fff">${(c.company_name||'?')[0]}</div>
+                    <div>
+                        <div style="font-weight:500">${c.company_name}</div>
+                        <div style="font-size:12px;color:var(--gray)">${c.email||''}</div>
+                    </div>
+                </div>
+            </td>
+            <td>${c.contact_name||'-'}</td>
+            <td style="text-transform:capitalize">${c.industry||'-'}</td>
+            <td><span class="badge badge-${c.plan||'starter'}">${c.plan||'starter'}</span></td>
+            <td>${c.lead_count||0}</td>
+            <td>${c.call_count||0}</td>
+            <td>$${(c.monthly_cost||0).toFixed(2)}</td>
+            <td><span class="badge badge-active">${c.status||'active'}</span></td>
+            <td>
+                <button class="btn-icon" onclick="viewClient(${c.id})" title="View">👁️</button>
+            </td>
+        </tr>
+    `).join('') : '<tr><td colspan="9" class="empty-state"><div class="empty-state-icon">👥</div>No clients yet. Add your first client!</td></tr>';
+    
+    document.getElementById('clients-table').innerHTML = html;
+    document.getElementById('all-clients-table').innerHTML = html;
+}
+
+function updateStats() {
+    document.getElementById('stat-clients').textContent = clients.length;
+    document.getElementById('stat-calls').textContent = clients.reduce((s,c) => s + (c.call_count||0), 0);
+    document.getElementById('stat-costs').textContent = '$' + clients.reduce((s,c) => s + (c.monthly_cost||0), 0).toFixed(2);
+    const revenue = clients.reduce((s,c) => s + ({starter:297,professional:497,enterprise:997}[c.plan]||297), 0);
+    document.getElementById('stat-revenue').textContent = '$' + revenue.toLocaleString();
+}
+
+function filterClients() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    const filtered = clients.filter(c => 
+        (c.company_name||'').toLowerCase().includes(q) ||
+        (c.email||'').toLowerCase().includes(q) ||
+        (c.industry||'').toLowerCase().includes(q)
+    );
+    const html = filtered.map(c => `
+        <tr>
+            <td><div style="display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;background:linear-gradient(135deg,var(--cyan),#0066ff);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:600;color:#fff">${(c.company_name||'?')[0]}</div><div><div style="font-weight:500">${c.company_name}</div><div style="font-size:12px;color:var(--gray)">${c.email||''}</div></div></div></td>
+            <td>${c.contact_name||'-'}</td>
+            <td>${c.industry||'-'}</td>
+            <td><span class="badge badge-${c.plan}">${c.plan}</span></td>
+            <td>${c.lead_count||0}</td>
+            <td>${c.call_count||0}</td>
+            <td>$${(c.monthly_cost||0).toFixed(2)}</td>
+            <td><span class="badge badge-active">${c.status}</span></td>
+            <td><button class="btn-icon" onclick="viewClient(${c.id})">👁️</button></td>
+        </tr>
+    `).join('');
+    document.getElementById('all-clients-table').innerHTML = html || '<tr><td colspan="9" class="empty-state">No results</td></tr>';
+}
+
+async function createClient() {
+    const data = {
+        company_name: document.getElementById('new-company').value,
+        contact_name: document.getElementById('new-contact').value,
+        email: document.getElementById('new-email').value,
+        phone: document.getElementById('new-phone').value,
+        industry: document.getElementById('new-industry').value,
+        plan: document.getElementById('new-plan').value
+    };
+    if (!data.company_name || !data.email) { alert('Company and email required'); return; }
+    
+    const res = await fetch('/api/admin/clients', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (result.success) {
+        closeModal('add-client-modal');
+        loadClients();
+        ['new-company','new-contact','new-email','new-phone'].forEach(id => document.getElementById(id).value = '');
+    } else {
+        alert(result.error || 'Failed');
+    }
+}
+
+async function viewClient(id) {
+    currentClientId = id;
+    const res = await fetch('/api/admin/clients/' + id);
+    const c = await res.json();
+    
+    document.getElementById('client-avatar').textContent = (c.company_name||'?')[0];
+    document.getElementById('client-name').textContent = c.company_name;
+    document.getElementById('client-email').textContent = c.email || '';
+    document.getElementById('client-industry').textContent = c.industry || '-';
+    document.getElementById('client-plan').textContent = c.plan || 'starter';
+    document.getElementById('client-since').textContent = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '-';
+    
+    document.getElementById('client-leads').textContent = c.stats?.total_leads || 0;
+    document.getElementById('client-calls').textContent = c.stats?.total_leads || 0;
+    document.getElementById('client-appointments').textContent = c.stats?.appointments || 0;
+    document.getElementById('client-cost').textContent = '$' + (c.monthly_cost || 0).toFixed(2);
+    
+    const intHtml = (c.integrations||[]).map(i => `
+        <div class="integration-card">
+            <div class="integration-header">
+                <div class="integration-icon">${i.integration_type==='retell'?'📞':i.integration_type==='twilio'?'💬':'🔗'}</div>
+                <div>
+                    <div class="integration-name">${i.integration_type.charAt(0).toUpperCase()+i.integration_type.slice(1)}</div>
+                    <div class="integration-status ${i.is_active?'connected':''}">${i.is_active?'● Connected':'○ Disconnected'}</div>
+                </div>
+            </div>
+            <div style="font-size:12px;color:var(--gray)">
+                ${i.phone_number?'Phone: '+i.phone_number:''}
+                ${i.agent_id?'<br>Agent: '+i.agent_id.slice(0,15)+'...':''}
+            </div>
+        </div>
+    `).join('') || '<p style="color:var(--gray)">No integrations yet</p>';
+    document.getElementById('client-integrations').innerHTML = intHtml;
+    
+    showPage('client-detail');
+}
+
+async function saveIntegration() {
+    if (!currentClientId) return;
+    const data = {
+        integration_type: document.getElementById('int-type').value,
+        api_key: document.getElementById('int-api-key').value,
+        phone_number: document.getElementById('int-phone').value,
+        agent_id: document.getElementById('int-agent').value
+    };
+    
+    const res = await fetch('/api/admin/clients/' + currentClientId + '/integrations', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (result.success) {
+        closeModal('add-integration-modal');
+        viewClient(currentClientId);
+    }
+}
+
+async function loadCosts() {
+    const res = await fetch('/api/admin/clients');
+    const clients = await res.json();
+    
+    let totalRetell = 0, totalTwilio = 0, totalOther = 0;
+    const rows = clients.map(c => {
+        const retell = (c.monthly_cost || 0) * 0.7;
+        const twilio = (c.monthly_cost || 0) * 0.2;
+        const other = (c.monthly_cost || 0) * 0.1;
+        totalRetell += retell;
+        totalTwilio += twilio;
+        totalOther += other;
+        return `<tr>
+            <td>${c.company_name}</td>
+            <td>$${retell.toFixed(2)}</td>
+            <td>$${twilio.toFixed(2)}</td>
+            <td>$${other.toFixed(2)}</td>
+            <td><strong>$${(c.monthly_cost||0).toFixed(2)}</strong></td>
+        </tr>`;
+    }).join('');
+    
+    document.getElementById('cost-table').innerHTML = rows || '<tr><td colspan="5" class="empty-state">No data</td></tr>';
+    document.getElementById('total-costs').textContent = '$' + (totalRetell + totalTwilio + totalOther).toFixed(2);
+    document.getElementById('retell-costs').textContent = '$' + totalRetell.toFixed(2);
+    document.getElementById('twilio-costs').textContent = '$' + totalTwilio.toFixed(2);
+    document.getElementById('avg-cost').textContent = clients.length ? '$' + ((totalRetell + totalTwilio + totalOther) / clients.length).toFixed(2) : '$0';
+}
+
+document.addEventListener('DOMContentLoaded', loadClients);
+</script>
+</body>
+</html>'''
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # VOICE LANDING PAGE - Stunning Marketing Website
@@ -7183,6 +8151,18 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(p.query)
         if path == '/':
             self.send_html(get_landing_page())
+        elif path == '/admin':
+            self.send_html(get_admin_dashboard())
+        elif path == '/api/admin/clients':
+            self.send_json(get_all_clients())
+        elif path.startswith('/api/admin/clients/'):
+            client_id = path.split('/')[-1]
+            if client_id.isdigit():
+                self.send_json(get_client(int(client_id)) or {'error': 'Not found'})
+            else:
+                self.send_error(404)
+        elif path == '/api/admin/stats':
+            self.send_json(get_admin_dashboard_stats())
         elif path in ['/app', '/dashboard']:
             self.send_html(get_html())
         elif path == '/api/leads':
@@ -7300,7 +8280,50 @@ class Handler(BaseHTTPRequestHandler):
         b = self.rfile.read(l).decode() if l > 0 else '{}'
         d = json.loads(b) if b else {}
         path = urlparse(self.path).path
-        if path == '/api/appointment':
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # ADMIN CLIENT MANAGEMENT ENDPOINTS
+        # ═══════════════════════════════════════════════════════════════════
+        if path == '/api/admin/clients':
+            result = create_client(
+                d.get('company_name', ''),
+                d.get('contact_name', ''),
+                d.get('email', ''),
+                d.get('phone', ''),
+                d.get('industry', ''),
+                d.get('plan', 'starter')
+            )
+            self.send_json(result)
+        elif path.startswith('/api/admin/clients/') and '/integrations' in path:
+            client_id = int(path.split('/')[4])
+            result = add_client_integration(
+                client_id,
+                d.get('integration_type', ''),
+                d.get('api_key'),
+                d.get('api_secret'),
+                d.get('webhook_url'),
+                d.get('phone_number'),
+                d.get('agent_id')
+            )
+            self.send_json(result)
+        elif path.startswith('/api/admin/clients/') and path.split('/')[-1].isdigit():
+            client_id = int(path.split('/')[-1])
+            result = update_client(client_id, d)
+            self.send_json(result)
+        elif path == '/api/admin/client-cost':
+            log_client_cost(
+                d.get('client_id'),
+                d.get('cost_type', 'other'),
+                d.get('quantity', 1),
+                d.get('unit_cost', 0),
+                d.get('description'),
+                d.get('call_id')
+            )
+            self.send_json({'success': True})
+        # ═══════════════════════════════════════════════════════════════════
+        # EXISTING ENDPOINTS
+        # ═══════════════════════════════════════════════════════════════════
+        elif path == '/api/appointment':
             self.send_json(create_appointment(d))
         elif path.startswith('/api/appointment/') and path.split('/')[-1].isdigit():
             self.send_json(update_appointment(int(path.split('/')[-1]), d))

@@ -3273,43 +3273,78 @@ def get_calendar_data(year, month):
 # AI ASSISTANT - "ARIA"
 # ═══════════════════════════════════════════════════════════════════════════════
 
-ARIA_SYSTEM_PROMPT = """You are Aria, the AI assistant for VOICE - a sales automation platform. You help users manage their leads, appointments, calls, and agents through natural conversation.
+ARIA_SYSTEM_PROMPT = """You are Aria, the world's most advanced AI assistant for VOICE - a sales automation platform. You are incredibly capable, proactive, and efficient. You execute tasks immediately without asking unnecessary questions.
 
-You have access to these ACTIONS you can perform by including them in your response:
+## YOUR CAPABILITIES
 
-APPOINTMENTS:
-- [ACTION:CREATE_APPOINTMENT:{"first_name":"John","phone":"7025551234","date":"2025-01-15","time":"10:00","agent_type":"roofing"}] - Create new appointment
-- [ACTION:UPDATE_APPOINTMENT:{"id":5,"date":"2025-01-16","time":"14:00"}] - Reschedule appointment
-- [ACTION:GET_APPOINTMENTS:{"date":"2025-01-15"}] - List appointments for a date
-- [ACTION:GET_TODAY_APPOINTMENTS] - Show today's appointments
+### 📅 APPOINTMENTS
+- [ACTION:CREATE_APPOINTMENT:{"first_name":"John","last_name":"Smith","phone":"7025551234","email":"john@email.com","date":"2025-01-15","time":"10:00","agent_type":"roofing"}]
+- [ACTION:UPDATE_APPOINTMENT:{"id":5,"date":"2025-01-16","time":"14:00"}]
+- [ACTION:CANCEL_APPOINTMENT:{"id":5}]
+- [ACTION:GET_TODAY_APPOINTMENTS]
+- [ACTION:GET_TOMORROW_APPOINTMENTS]
+- [ACTION:GET_WEEK_APPOINTMENTS]
 
-CALLS:
-- [ACTION:TEST_AGENT:{"agent_type":"roofing"}] - Test call an outbound agent
-- [ACTION:TEST_INBOUND:{"agent_type":"inbound_medical"}] - Test call an inbound agent
-- [ACTION:CALL_LEAD:{"phone":"7025551234","name":"John","agent_type":"roofing"}] - Call a lead
+### 📞 CALLS & VOICE AI
+- [ACTION:TEST_OUTBOUND:{"agent_type":"roofing"}] - Test outbound sales agent
+- [ACTION:TEST_INBOUND:{"agent_type":"inbound_medical"}] - Test inbound receptionist
+- [ACTION:CALL_LEAD:{"phone":"7025551234","name":"John","agent_type":"roofing"}] - Call a specific lead
+- [ACTION:CALL_NOW:{"phone":"7025551234"}] - Immediate call to number
 
-LEADS:
-- [ACTION:ADD_LEAD:{"phone":"7025551234","name":"John"}] - Add new lead
-- [ACTION:START_CYCLE:{"phone":"7025551234","name":"John","agent_type":"roofing"}] - Start lead cycle
+### 👥 LEAD MANAGEMENT
+- [ACTION:ADD_LEAD:{"phone":"7025551234","first_name":"John","last_name":"Smith","email":"john@email.com"}]
+- [ACTION:DELETE_LEAD:{"phone":"7025551234"}]
+- [ACTION:DELETE_LEAD_BY_ID:{"id":123}]
+- [ACTION:UPDATE_LEAD:{"id":123,"status":"qualified"}]
+- [ACTION:GET_LEADS]
+- [ACTION:GET_LEAD:{"phone":"7025551234"}]
+- [ACTION:START_CYCLE:{"phone":"7025551234","name":"John","agent_type":"roofing"}]
 
-SMS:
-- [ACTION:SEND_SMS:{"phone":"7025551234","message":"Hello!"}] - Send text message
-- [ACTION:SEND_CONFIRMATION:{"appointment_id":5}] - Send appointment confirmation
+### 📱 SMS
+- [ACTION:SEND_SMS:{"phone":"7025551234","message":"Hi! This is a reminder..."}]
+- [ACTION:SEND_CONFIRMATION:{"appointment_id":5}]
+- [ACTION:SEND_REMINDER:{"appointment_id":5}]
+- [ACTION:GET_SMS_LOGS]
 
-STATS:
-- [ACTION:GET_STATS] - Get dashboard statistics
-- [ACTION:GET_COSTS] - Get cost breakdown
-- [ACTION:GET_AGENT_STATS:{"agent_type":"roofing"}] - Get specific agent stats
+### 📊 STATS & ANALYTICS  
+- [ACTION:GET_STATS] - Full dashboard stats
+- [ACTION:GET_COSTS] - Cost breakdown
+- [ACTION:GET_CALLS] - Recent calls
+- [ACTION:GET_PIPELINE] - Pipeline overview
+- [ACTION:GET_AGENT_STATS:{"agent_type":"roofing"}]
 
-You are helpful, friendly, and efficient. When users ask you to do something, include the appropriate ACTION in your response. You can include multiple actions if needed.
+### ⚙️ SETTINGS
+- [ACTION:SET_TEST_PHONE:{"phone":"7025551234"}] - Set default test phone
+- [ACTION:GET_SETTINGS] - Get all settings
+- [ACTION:TOGGLE_MODE:{"mode":"live"}] - Switch between test/live mode
 
-AVAILABLE OUTBOUND AGENTS (Sales Team):
-- roofing (Paige), solar (Luna), insurance (Maya), auto (Marco), realtor (Sofia), dental (Carmen), hvac (Jake), legal (Victoria), fitness (Alex), cleaning (Rosa), landscaping (Miguel), tax (Diana)
+## RULES FOR EXECUTION
 
-AVAILABLE INBOUND AGENTS (Front Desk):
-- inbound_medical (Sarah), inbound_dental (Emily), inbound_legal (Grace), inbound_realestate (Jennifer), inbound_automotive (Mike), inbound_salon (Brittany), inbound_restaurant (Tony), inbound_hotel (Amanda), inbound_gym (Chris), inbound_insurance (Patricia), inbound_vet (Kelly), inbound_school (Linda), inbound_contractor (Dave), inbound_accounting (Rachel), inbound_therapy (Michelle)
+1. **ALWAYS EXECUTE** - When user asks you to do something, DO IT. Include the ACTION tag.
+2. **CONFIRM & ACT** - Say what you're doing AND include the action: "I'll call John now [ACTION:CALL_LEAD:{...}]"
+3. **SMART DEFAULTS** - If user says "call this number: 7201234567", call it with default agent
+4. **MULTIPLE ACTIONS** - You can do multiple things at once
+5. **BE PROACTIVE** - Suggest next steps after completing tasks
 
-Always be conversational and confirm what you're doing. If you need more information, ask for it.
+## AGENT TYPES
+
+OUTBOUND (Sales): roofing, solar, hvac, plumbing, electrical, insurance, auto, realtor, dental, legal, fitness, cleaning, landscaping, tax, pest, windows, flooring, painting, garage, pool, moving, security, mortgage, chiro, medspa
+
+INBOUND (Reception): inbound_medical, inbound_dental, inbound_spa, inbound_restaurant, inbound_hotel, inbound_gym, inbound_vet, inbound_therapy, inbound_hvac, inbound_roofing, inbound_legal, inbound_auto
+
+## TONE
+- Confident and capable
+- Brief but friendly
+- Action-oriented
+- Never say "I can't" - find a way
+
+When user says things like:
+- "Call 720-324-0525" → Immediately call that number
+- "Add John 7205551234" → Add the lead immediately
+- "Delete lead 123" → Delete it
+- "Book appointment for tomorrow at 2pm" → Create it
+- "Test roofing agent" → Test call immediately
+- "What's happening today?" → Show appointments and stats
 """
 
 def process_aria_actions(response_text):
@@ -3319,74 +3354,208 @@ def process_aria_actions(response_text):
     
     for match in re.finditer(action_pattern, response_text):
         action = match.group(1)
-        params = json.loads(match.group(2)) if match.group(2) else {}
+        params = {}
+        if match.group(2):
+            try:
+                params = json.loads(match.group(2))
+            except:
+                params = {}
+        
+        print(f"🤖 ARIA ACTION: {action} with params: {params}")
         
         try:
+            # APPOINTMENTS
             if action == "CREATE_APPOINTMENT":
                 result = create_appointment(params)
-                results.append(f"✅ Created appointment for {params.get('first_name', 'customer')}")
+                results.append(f"✅ Created appointment for {params.get('first_name', 'customer')} on {params.get('date')} at {params.get('time')}")
             
             elif action == "UPDATE_APPOINTMENT":
                 result = update_appointment(params.get('id'), params)
                 results.append(f"✅ Updated appointment #{params.get('id')}")
             
-            elif action == "GET_APPOINTMENTS":
-                appts = get_appointments(params)
-                results.append(f"📅 Found {len(appts)} appointments")
+            elif action == "CANCEL_APPOINTMENT":
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                c.execute("UPDATE appointments SET status = 'cancelled' WHERE id = ?", (params.get('id'),))
+                conn.commit()
+                conn.close()
+                results.append(f"✅ Cancelled appointment #{params.get('id')}")
             
             elif action == "GET_TODAY_APPOINTMENTS":
                 appts = get_appointments({'date': datetime.now().strftime('%Y-%m-%d')})
-                results.append(f"📅 {len(appts)} appointments today")
+                if appts:
+                    appt_list = ", ".join([f"{a['first_name']} at {a['appointment_time']}" for a in appts[:5]])
+                    results.append(f"📅 Today: {len(appts)} appointments - {appt_list}")
+                else:
+                    results.append("📅 No appointments scheduled for today")
             
-            elif action == "TEST_AGENT" or action == "TEST_INBOUND":
+            elif action == "GET_TOMORROW_APPOINTMENTS":
+                tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+                appts = get_appointments({'date': tomorrow})
+                results.append(f"📅 Tomorrow: {len(appts)} appointments")
+            
+            elif action == "GET_WEEK_APPOINTMENTS":
+                appts = get_appointments({})
+                results.append(f"📅 This week: {len(appts)} total appointments")
+            
+            # CALLS
+            elif action in ["TEST_OUTBOUND", "TEST_AGENT"]:
                 result = test_agent(params.get('agent_type', 'roofing'))
                 if result.get('success'):
-                    results.append(f"📞 Test call initiated!")
+                    results.append(f"📞 Test call initiated to {params.get('agent_type', 'roofing')} agent!")
                 else:
-                    results.append(f"❌ Call failed: {result.get('error', 'Unknown')[:50]}")
+                    results.append(f"❌ Call failed: {result.get('error', 'Unknown error')[:100]}")
             
-            elif action == "CALL_LEAD":
-                result = make_call(params.get('phone'), params.get('name', 'there'), params.get('agent_type', 'roofing'))
-                results.append(f"📞 Calling {params.get('name', 'lead')}...")
+            elif action == "TEST_INBOUND":
+                result = test_agent(params.get('agent_type', 'inbound_medical'))
+                if result.get('success'):
+                    results.append(f"📞 Test call initiated to {params.get('agent_type')} receptionist!")
+                else:
+                    results.append(f"❌ Call failed: {result.get('error', 'Unknown')[:100]}")
             
+            elif action in ["CALL_LEAD", "CALL_NOW"]:
+                phone = params.get('phone', '')
+                name = params.get('name', 'there')
+                agent = params.get('agent_type', 'roofing')
+                result = make_call(phone, name, agent)
+                if result.get('success'):
+                    results.append(f"📞 Calling {name} at {phone}...")
+                else:
+                    results.append(f"❌ Call failed: {result.get('error', 'Unknown')[:100]}")
+            
+            # LEADS
             elif action == "ADD_LEAD":
-                lead_id = add_lead(params.get('phone'), params.get('name', ''))
-                results.append(f"✅ Added lead #{lead_id}")
+                lead_id = add_lead(
+                    params.get('phone', ''),
+                    params.get('first_name', params.get('name', '')),
+                    params.get('agent_type', 'roofing')
+                )
+                results.append(f"✅ Added lead #{lead_id}: {params.get('first_name', params.get('name', 'New lead'))}")
+            
+            elif action == "DELETE_LEAD":
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                c.execute("DELETE FROM leads WHERE phone LIKE ?", (f"%{params.get('phone', '')}%",))
+                deleted = c.rowcount
+                conn.commit()
+                conn.close()
+                results.append(f"✅ Deleted {deleted} lead(s) with phone {params.get('phone')}")
+            
+            elif action == "DELETE_LEAD_BY_ID":
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                c.execute("DELETE FROM leads WHERE id = ?", (params.get('id'),))
+                conn.commit()
+                conn.close()
+                results.append(f"✅ Deleted lead #{params.get('id')}")
+            
+            elif action == "UPDATE_LEAD":
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                updates = []
+                values = []
+                for key in ['status', 'first_name', 'last_name', 'email', 'phone']:
+                    if key in params and key != 'id':
+                        updates.append(f"{key} = ?")
+                        values.append(params[key])
+                if updates:
+                    values.append(params.get('id'))
+                    c.execute(f"UPDATE leads SET {', '.join(updates)} WHERE id = ?", values)
+                    conn.commit()
+                conn.close()
+                results.append(f"✅ Updated lead #{params.get('id')}")
+            
+            elif action == "GET_LEADS":
+                leads = get_leads()
+                results.append(f"👥 {len(leads)} total leads in database")
+            
+            elif action == "GET_LEAD":
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                c.execute("SELECT * FROM leads WHERE phone LIKE ?", (f"%{params.get('phone', '')}%",))
+                lead = c.fetchone()
+                conn.close()
+                if lead:
+                    results.append(f"👤 Found: {lead[1]} {lead[2]} - {lead[3]} - Status: {lead[4]}")
+                else:
+                    results.append(f"❌ No lead found with phone {params.get('phone')}")
             
             elif action == "START_CYCLE":
-                result = start_lead_cycle(params.get('phone'), params.get('name', 'there'), 'manual', 1, params.get('agent_type', 'roofing'))
-                results.append(f"🔥 Started lead cycle")
+                result = start_lead_cycle(params.get('phone'), params.get('name', 'there'), 'aria', 1, params.get('agent_type', 'roofing'))
+                results.append(f"🔥 Started call cycle for {params.get('name', 'lead')}")
             
+            # SMS
             elif action == "SEND_SMS":
                 result = send_sms(params.get('phone'), params.get('message'))
-                results.append(f"📱 SMS sent" if result.get('success') else f"❌ SMS failed")
+                results.append(f"📱 SMS sent to {params.get('phone')}" if result.get('success') else f"❌ SMS failed: {result.get('error', 'Unknown')[:50]}")
             
             elif action == "SEND_CONFIRMATION":
                 result = send_appointment_confirmation(params.get('appointment_id'))
-                results.append(f"📱 Confirmation sent" if result.get('success') else f"❌ Failed")
+                results.append(f"📱 Confirmation sent" if result.get('success') else f"❌ Failed to send")
             
+            elif action == "SEND_REMINDER":
+                result = send_appointment_reminder(params.get('appointment_id'))
+                results.append(f"📱 Reminder sent" if result.get('success') else f"❌ Failed to send")
+            
+            elif action == "GET_SMS_LOGS":
+                logs = get_sms_logs()
+                results.append(f"📱 {len(logs)} SMS messages in log")
+            
+            # STATS
             elif action == "GET_STATS":
                 stats = get_appointment_stats()
-                results.append(f"📊 {stats['total']} total, {stats['today']} today, {stats['sold']} sold, ${stats['revenue']} revenue")
+                results.append(f"📊 Stats: {stats.get('total', 0)} total | {stats.get('today', 0)} today | {stats.get('sold', 0)} sold | ${stats.get('revenue', 0):,.0f} revenue")
             
             elif action == "GET_COSTS":
                 costs = get_live_costs()
-                results.append(f"💰 Today: ${costs['today']['total']:.2f}, Month: ${costs['month']['total']:.2f}")
+                results.append(f"💰 Costs - Today: ${costs.get('today', {}).get('total', 0):.2f} | Month: ${costs.get('month', {}).get('total', 0):.2f}")
+            
+            elif action == "GET_CALLS":
+                calls = get_calls()
+                results.append(f"📞 {len(calls)} recent calls")
+            
+            elif action == "GET_PIPELINE":
+                pipeline = get_pipeline_stats()
+                results.append(f"🔄 Pipeline: {pipeline}")
             
             elif action == "GET_AGENT_STATS":
                 stats = get_agent_stats(params.get('agent_type', 'roofing'))
-                results.append(f"🤖 {stats['total_calls']} calls, {stats['appointments']} appts, {stats['conversion_rate']}% conv")
+                results.append(f"🤖 Agent stats: {stats.get('total_calls', 0)} calls | {stats.get('appointments', 0)} appts | {stats.get('conversion_rate', 0)}% conv")
+            
+            # SETTINGS
+            elif action == "SET_TEST_PHONE":
+                update_setting('test_phone', params.get('phone'))
+                results.append(f"✅ Test phone set to {params.get('phone')}")
+            
+            elif action == "GET_SETTINGS":
+                settings = get_settings()
+                results.append(f"⚙️ Mode: {settings.get('mode')} | Test Phone: {settings.get('test_phone')}")
+            
+            elif action == "TOGGLE_MODE":
+                new_mode = params.get('mode', 'testing')
+                update_setting('mode', new_mode)
+                results.append(f"✅ Mode changed to {new_mode}")
+            
+            else:
+                results.append(f"⚠️ Unknown action: {action}")
         
         except Exception as e:
-            results.append(f"❌ Error: {str(e)[:50]}")
+            print(f"❌ ARIA ACTION ERROR: {e}")
+            results.append(f"❌ Error executing {action}: {str(e)[:100]}")
     
     # Remove action tags from response for clean display
     clean_response = re.sub(action_pattern, '', response_text).strip()
     
+    # Add action results to response
+    if results:
+        clean_response += "\n\n" + "\n".join(results)
+    
     return clean_response, results
 
 def chat_with_aria(user_message):
-    """Chat with Aria AI assistant"""
+    """Chat with Aria AI assistant - the most advanced AI assistant"""
+    print(f"\n🤖 ARIA RECEIVED: {user_message}")
+    
     # Get chat history
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -3403,27 +3572,37 @@ def chat_with_aria(user_message):
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
     
-    # Call OpenAI (or use built-in if no key)
+    aria_response = None
+    
+    # Try OpenAI first
     if OPENAI_API_KEY:
         try:
+            print(f"🤖 ARIA: Using OpenAI API...")
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "gpt-4o-mini", "messages": messages, "max_tokens": 500},
+                json={"model": "gpt-4o-mini", "messages": messages, "max_tokens": 1000, "temperature": 0.7},
                 timeout=30
             )
+            print(f"🤖 ARIA: OpenAI response status: {response.status_code}")
             if response.status_code == 200:
                 aria_response = response.json()['choices'][0]['message']['content']
+                print(f"🤖 ARIA: Got response from OpenAI")
             else:
-                aria_response = "I'm having trouble connecting. Try again?"
-        except:
-            aria_response = "Connection error. Please try again."
-    else:
-        # Simple built-in responses without API
-        aria_response = process_simple_command(user_message)
+                print(f"🤖 ARIA: OpenAI error: {response.text[:200]}")
+        except Exception as e:
+            print(f"🤖 ARIA: OpenAI exception: {e}")
+    
+    # Fallback to smart command processing
+    if not aria_response:
+        print(f"🤖 ARIA: Using smart fallback...")
+        aria_response = process_smart_command(user_message)
     
     # Process any actions in the response
     clean_response, action_results = process_aria_actions(aria_response)
+    
+    print(f"🤖 ARIA RESPONSE: {clean_response[:200]}...")
+    print(f"🤖 ARIA ACTIONS: {action_results}")
     
     # Save Aria's response
     conn = sqlite3.connect(DB_PATH)
@@ -3437,63 +3616,123 @@ def chat_with_aria(user_message):
         "actions": action_results
     }
 
-def process_simple_command(message):
-    """Process commands without OpenAI"""
-    msg = message.lower()
+def process_smart_command(message):
+    """Process commands intelligently without OpenAI"""
+    msg = message.lower().strip()
     
-    # Google Calendar questions
-    if 'google' in msg and 'calendar' in msg:
-        if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
-            return "Yes! Google Calendar integration is configured. Appointments you book will sync automatically. You can also go to /oauth/google to re-authorize if needed."
+    # Extract phone numbers from message
+    phone_match = re.search(r'(\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\d{10,11})', message)
+    phone = phone_match.group(1).replace('-', '').replace('.', '').replace(' ', '') if phone_match else None
+    
+    # Extract names
+    name_patterns = [
+        r'(?:call|add|contact)\s+(\w+)',
+        r'(\w+)\s+at\s+\d{3}',
+        r'for\s+(\w+)',
+    ]
+    name = None
+    for pattern in name_patterns:
+        match = re.search(pattern, message, re.I)
+        if match:
+            name = match.group(1)
+            break
+    
+    # CALL commands
+    if any(word in msg for word in ['call', 'dial', 'phone', 'ring']):
+        if phone:
+            agent_type = 'roofing'
+            for agent in ['solar', 'hvac', 'plumbing', 'insurance', 'auto', 'dental', 'medical', 'legal']:
+                if agent in msg:
+                    agent_type = agent if agent != 'medical' else 'inbound_medical'
+                    break
+            return f"Calling {name or 'them'} now! [ACTION:CALL_NOW:{{\"phone\":\"{phone}\",\"name\":\"{name or 'there'}\",\"agent_type\":\"{agent_type}\"}}]"
+        return "Sure! What's the phone number you'd like me to call?"
+    
+    # TEST commands
+    if 'test' in msg:
+        if 'inbound' in msg or 'receptionist' in msg:
+            for agent in ['medical', 'dental', 'spa', 'hotel', 'restaurant', 'gym', 'vet', 'therapy']:
+                if agent in msg:
+                    return f"Testing the {agent} receptionist now! [ACTION:TEST_INBOUND:{{\"agent_type\":\"inbound_{agent}\"}}]"
+            return f"Testing medical receptionist! [ACTION:TEST_INBOUND:{{\"agent_type\":\"inbound_medical\"}}]"
         else:
-            return "Google Calendar is not connected yet. To enable it, you'll need to:\n\n1. Go to Google Cloud Console\n2. Create OAuth credentials\n3. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to the config at the top of voice_app.py\n4. Restart the app and go to /oauth/google to authorize\n\nWant me to explain any of these steps?"
+            for agent in ['roofing', 'solar', 'hvac', 'plumbing', 'insurance', 'auto', 'dental', 'legal', 'fitness']:
+                if agent in msg:
+                    return f"Testing the {agent} agent now! [ACTION:TEST_OUTBOUND:{{\"agent_type\":\"{agent}\"}}]"
+            return f"Testing the roofing agent now! [ACTION:TEST_OUTBOUND:{{\"agent_type\":\"roofing\"}}]"
     
-    if 'calendar' in msg and ('connect' in msg or 'sync' in msg or 'link' in msg):
-        return "To connect Google Calendar, set your GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the config, then visit http://localhost:8080/oauth/google to authorize. Once connected, all appointments will sync automatically!"
+    # ADD LEAD commands
+    if any(word in msg for word in ['add lead', 'new lead', 'add contact', 'create lead']):
+        if phone:
+            return f"Adding lead {name or 'New Lead'} with phone {phone}! [ACTION:ADD_LEAD:{{\"phone\":\"{phone}\",\"first_name\":\"{name or 'New'}\"}}]"
+        return "Sure! What's their name and phone number?"
     
-    if 'test' in msg and 'agent' in msg:
-        for agent_type in list(OUTBOUND_AGENTS.keys()) + list(INBOUND_AGENTS.keys()):
-            if agent_type.replace('_', ' ') in msg or agent_type.replace('inbound_', '') in msg:
-                return f"Sure! Testing {AGENT_TEMPLATES[agent_type]['name']} now. [ACTION:TEST_AGENT:{{\"agent_type\":\"{agent_type}\"}}]"
-        return "Which agent would you like to test? I have 12 outbound sales agents (roofing, solar, insurance, auto, real estate, dental, hvac, legal, fitness, cleaning, landscaping, tax) and 15 inbound receptionists."
+    # DELETE commands
+    if any(word in msg for word in ['delete', 'remove', 'erase']):
+        if 'lead' in msg:
+            id_match = re.search(r'#?(\d+)', message)
+            if id_match:
+                return f"Deleting lead #{id_match.group(1)}! [ACTION:DELETE_LEAD_BY_ID:{{\"id\":{id_match.group(1)}}}]"
+            if phone:
+                return f"Deleting lead with phone {phone}! [ACTION:DELETE_LEAD:{{\"phone\":\"{phone}\"}}]"
+        return "Which lead would you like me to delete? Give me the ID or phone number."
     
-    if 'appointment' in msg and ('today' in msg or 'schedule' in msg):
-        return "Here are today's appointments: [ACTION:GET_TODAY_APPOINTMENTS]"
+    # APPOINTMENT commands
+    if any(word in msg for word in ['appointment', 'book', 'schedule']):
+        if 'today' in msg:
+            return "Here are today's appointments: [ACTION:GET_TODAY_APPOINTMENTS]"
+        if 'tomorrow' in msg:
+            return "Here are tomorrow's appointments: [ACTION:GET_TOMORROW_APPOINTMENTS]"
+        if phone and name:
+            return f"I'll book an appointment for {name}. What date and time? [ACTION:CREATE_APPOINTMENT:{{\"first_name\":\"{name}\",\"phone\":\"{phone}\"}}]"
+        return "I can book an appointment! Give me the name, phone, date and time."
     
-    if 'stat' in msg or 'dashboard' in msg:
-        return "Let me get your stats: [ACTION:GET_STATS]"
+    # STATS commands
+    if any(word in msg for word in ['stats', 'statistics', 'numbers', 'dashboard', 'overview']):
+        return "Here are your stats: [ACTION:GET_STATS]"
     
-    if 'cost' in msg or 'spending' in msg:
+    # COST commands
+    if any(word in msg for word in ['cost', 'costs', 'spending', 'money', 'expense']):
         return "Here's your cost breakdown: [ACTION:GET_COSTS]"
     
-    if 'call' in msg:
-        return "Who would you like me to call? Give me a name and phone number, and which agent to use."
+    # SMS commands
+    if any(word in msg for word in ['text', 'sms', 'message']):
+        if phone:
+            msg_match = re.search(r'(?:saying|message|text)[:\s]+["\']?(.+?)["\']?$', message, re.I)
+            sms_text = msg_match.group(1) if msg_match else "Hi! Just following up."
+            return f"Sending SMS to {phone}! [ACTION:SEND_SMS:{{\"phone\":\"{phone}\",\"message\":\"{sms_text}\"}}]"
+        return "Sure! What's the phone number and message?"
     
-    if 'book' in msg or 'schedule' in msg:
-        return "I can book an appointment! What's the customer's name, phone, and when should we schedule it?"
+    # LEADS commands
+    if any(word in msg for word in ['leads', 'contacts', 'prospects']):
+        return "Here's your lead overview: [ACTION:GET_LEADS]"
     
-    if 'help' in msg or 'what can' in msg:
-        return """Hey! I'm Aria, your AI assistant. Here's what I can help with:
-
-📅 **Appointments**: "Show today's appointments", "Book an appointment"
-📞 **Calls**: "Test the roofing agent", "Test the medical receptionist"
-📊 **Stats**: "Show me the dashboard stats", "What are today's costs?"
-🔗 **Integrations**: "Is Google Calendar connected?"
-🤖 **Agents**: "What agents do we have?"
-
-Just ask naturally and I'll take care of it!"""
+    # CALLS history
+    if 'calls' in msg and any(word in msg for word in ['recent', 'history', 'log', 'show', 'list']):
+        return "Here are your recent calls: [ACTION:GET_CALLS]"
     
-    return """Hey! I'm Aria, your VOICE AI assistant. 
+    # HELP commands
+    if any(word in msg for word in ['help', 'what can', 'commands', 'how do']):
+        return """Hey! I'm Aria, your AI command center. Here's what I can do:
 
-I can help you:
-• Test any of the 30+ industries
-• Book and manage appointments  
-• Check stats and costs
-• Answer questions about the system
+📞 **Calls**: "Call 720-324-0525" | "Test roofing agent" | "Test medical receptionist"
+👥 **Leads**: "Add lead John 7205551234" | "Delete lead #123" | "Show leads"
+📅 **Appointments**: "Today's appointments" | "Book appointment for John"
+📱 **SMS**: "Text 7205551234 saying Hello!"
+📊 **Stats**: "Show stats" | "What are the costs?"
 
-Try asking: "Test the roofing agent" or "Is Google Calendar connected?"
+Just tell me what you need - I'll handle it!"""
+    
+    # Default response
+    return """Hey! I'm Aria. Tell me what you need:
 
-What would you like to do?"""
+• "Call 720-324-0525" - I'll call them
+• "Test roofing agent" - Test a demo call  
+• "Add lead John 7205551234" - Add a new lead
+• "Show today's appointments" - See schedule
+• "What are the stats?" - Dashboard overview
+
+What would you like me to do?"""
 
 def get_chat_history():
     """Get recent chat history"""

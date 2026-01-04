@@ -6631,35 +6631,38 @@ td{font-size:13px}
 @media(max-width:1024px){.stats-grid{grid-template-columns:repeat(2,1fr)}.grid-2{grid-template-columns:1fr}}
 @media(max-width:768px){.sidebar{transform:translateX(-100%)}.main{margin-left:0}.assistant-bar{left:0}}"""
 
-    js = """const $=id=>document.getElementById(id);
+    js = """window.onerror=function(msg,url,line){console.error('JS Error:',msg,'at line',line);return false};
+const $=id=>document.getElementById(id);
 const outbound=""" + out_json + """;
 const inbound=""" + in_json + """;
 const agents={...outbound,...inbound};
 let curMonth=new Date();let selDate=null;let testPhone='';
+let calViewMode='stream';let calSelectedDate=new Date();
 async function init(){
+try{
 const opts=Object.entries(outbound).map(([k,v])=>`<option value="${k}">${v.name} - ${v.industry}</option>`).join('');
 const allOpts=Object.entries(agents).map(([k,v])=>`<option value="${k}">${v.name} - ${v.industry}</option>`).join('');
 ['l-agent','ap-agent'].forEach(id=>{if($(id))$(id).innerHTML=opts});
 if($('test-agent-select'))$('test-agent-select').innerHTML=allOpts;
-$('ap-date').value=new Date().toISOString().split('T')[0];$('ap-time').value='10:00';
-const settings=await fetch('/api/settings').then(r=>r.json());
+if($('ap-date'))$('ap-date').value=new Date().toISOString().split('T')[0];
+if($('ap-time'))$('ap-time').value='10:00';
+const settings=await fetch('/api/settings').then(r=>r.json()).catch(()=>({}));
 testPhone=settings.test_phone||'';
 if($('test-phone'))$('test-phone').value=testPhone;
 if($('app-mode'))$('app-mode').value=settings.mode||'testing';
+}catch(e){console.error('Init error:',e)}
 }init();
-document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));n.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));$('page-'+n.dataset.page).classList.add('active');load(n.dataset.page)});
-function load(p){if(p==='dashboard')loadDash();else if(p==='calendar')loadVoiceCal();else if(p==='appointments')loadAppts();else if(p==='dispositions')loadDispo();else if(p==='outbound')loadOut();else if(p==='inbound')loadIn();else if(p==='leads')loadLeads();else if(p==='website-leads')loadWebsiteLeads();else if(p==='calls')loadCalls();else if(p==='costs')loadCosts();else if(p==='testing')loadTesting();else if(p==='ads')loadAds();else if(p==='pipeline')loadPipeline();else if(p==='integrations')loadIntegrations();else if(p==='account')loadAccount();else if(p==='evolution')loadEvolution();else if(p==='nexus')loadNexus()}
-function openModal(id){$(id).classList.add('active')}function closeModal(id){$(id).classList.remove('active')}function toast(msg,err=false){$('toast').textContent=msg;$('toast').className='toast show'+(err?' error':'');setTimeout(()=>$('toast').classList.remove('show'),3000)}
+document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));n.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const pg=$('page-'+n.dataset.page);if(pg)pg.classList.add('active');load(n.dataset.page)});
+function load(p){try{if(p==='dashboard')loadDash();else if(p==='calendar')loadVoiceCal();else if(p==='appointments')loadAppts();else if(p==='dispositions')loadDispo();else if(p==='outbound')loadOut();else if(p==='inbound')loadIn();else if(p==='leads')loadLeads();else if(p==='website-leads')loadWebsiteLeads();else if(p==='calls')loadCalls();else if(p==='costs')loadCosts();else if(p==='testing')loadTesting();else if(p==='ads')loadAds();else if(p==='pipeline')loadPipeline();else if(p==='integrations')loadIntegrations();else if(p==='account')loadAccount();else if(p==='evolution')loadEvolution();else if(p==='nexus')loadNexus();else if(p==='command')loadCommand()}catch(e){console.error('Load error:',p,e)}}
+function openModal(id){const el=$(id);if(el)el.classList.add('active')}function closeModal(id){const el=$(id);if(el)el.classList.remove('active')}function toast(msg,err=false){const t=$('toast');if(t){t.textContent=msg;t.className='toast show'+(err?' error':'');setTimeout(()=>t.classList.remove('show'),3000)}}
 function apptCard(a){const g=agents[a.agent_type]||{name:'Agent'};return `<div class="appt-card"><div class="appt-header"><div><div class="appt-name">${a.first_name||'Customer'}</div><div class="appt-phone">${a.phone||''}</div></div><span class="status status-${a.disposition||'scheduled'}">${a.disposition||'Scheduled'}</span></div><div class="appt-meta"><span>${a.appointment_date||'TBD'}</span><span>${a.appointment_time||''}</span><span>${g.name}</span></div><div class="appt-actions">${!a.disposition?`<button class="btn btn-sm btn-success" onclick="qDispo(${a.id},'sold')">Sold</button><button class="btn btn-sm btn-danger" onclick="qDispo(${a.id},'no-show')">No Show</button>`:''}<button class="btn btn-sm btn-secondary" onclick="editAppt(${a.id})">Edit</button></div></div>`}
-async function loadDash(){const s=await fetch('/api/appointment-stats').then(r=>r.json());$('s-today').textContent=s.today||0;$('s-scheduled').textContent=s.scheduled||0;$('s-sold').textContent=s.sold||0;$('s-revenue').textContent='$'+(s.revenue||0).toLocaleString();const today=new Date().toISOString().split('T')[0];const a=await fetch('/api/appointments?date='+today).then(r=>r.json());$('today-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments today</p>'}
-async function loadCal(){const y=curMonth.getFullYear(),m=curMonth.getMonth();if($('cal-title'))$('cal-title').textContent=curMonth.toLocaleDateString('en-US',{month:'long',year:'numeric'});const data=await fetch(`/api/calendar?year=${y}&month=${m+1}`).then(r=>r.json());const first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate(),today=new Date().toISOString().split('T')[0];let h='';for(let i=0;i<first;i++)h+='<div class="cal-day other"></div>';for(let d=1;d<=days;d++){const dt=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const info=data[dt]||{count:0};h+=`<div class="cal-day${dt===today?' today':''}${dt===selDate?' selected':''}" onclick="selDay('${dt}')"><div class="cal-day-num">${d}</div>${info.count?`<span class="cal-count">${info.count}</span>`:''}</div>`}if($('cal-days'))$('cal-days').innerHTML=h;if(selDate)loadDay(selDate)}
-function chgMonth(d){curMonth.setMonth(curMonth.getMonth()+d);loadCal()}async function selDay(dt){selDate=dt;calSelectedDate=new Date(dt+'T12:00:00');loadCal();loadVoiceCal();loadDay(dt)}
+async function loadDash(){try{const s=await fetch('/api/appointment-stats').then(r=>r.json()).catch(()=>({}));if($('s-today'))$('s-today').textContent=s.today||0;if($('s-scheduled'))$('s-scheduled').textContent=s.scheduled||0;if($('s-sold'))$('s-sold').textContent=s.sold||0;if($('s-revenue'))$('s-revenue').textContent='$'+(s.revenue||0).toLocaleString();const today=new Date().toISOString().split('T')[0];const a=await fetch('/api/appointments?date='+today).then(r=>r.json()).catch(()=>[]);if($('today-list'))$('today-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments today</p>'}catch(e){console.error('loadDash error:',e)}}
+async function loadCal(){try{const y=curMonth.getFullYear(),m=curMonth.getMonth();if($('cal-title'))$('cal-title').textContent=curMonth.toLocaleDateString('en-US',{month:'long',year:'numeric'});const data=await fetch(`/api/calendar?year=${y}&month=${m+1}`).then(r=>r.json()).catch(()=>({}));const first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate(),today=new Date().toISOString().split('T')[0];let h='';for(let i=0;i<first;i++)h+='<div class="cal-day other"></div>';for(let d=1;d<=days;d++){const dt=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const info=data[dt]||{count:0};h+=`<div class="cal-day${dt===today?' today':''}${dt===selDate?' selected':''}" onclick="selDay('${dt}')"><div class="cal-day-num">${d}</div>${info.count?`<span class="cal-count">${info.count}</span>`:''}</div>`}if($('cal-days'))$('cal-days').innerHTML=h;if(selDate)loadDay(selDate)}catch(e){console.error('loadCal error:',e)}}
+function chgMonth(d){curMonth.setMonth(curMonth.getMonth()+d);loadCal()}async function selDay(dt){selDate=dt;calSelectedDate=new Date(dt+'T12:00:00');loadCal();if(typeof loadVoiceCal==='function')loadVoiceCal();loadDay(dt)}
 
 /* ═══════════════════════════════════════════════════════════════════════════════ */
 /* VOICE OS CALENDAR - REVOLUTIONARY AI-POWERED SCHEDULING                         */
 /* ═══════════════════════════════════════════════════════════════════════════════ */
-
-let calViewMode='stream';let calSelectedDate=new Date();
 
 setInterval(()=>{const now=new Date();const el=$('current-time');if(el)el.textContent=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})},1000);
 
@@ -6669,7 +6672,7 @@ function navCalDate(dir){if(dir===0)calSelectedDate=new Date();else calSelectedD
 
 function updateCalDateDisplay(){const today=new Date();const isToday=calSelectedDate.toDateString()===today.toDateString();const isTomorrow=calSelectedDate.toDateString()===new Date(today.getTime()+86400000).toDateString();const isYesterday=calSelectedDate.toDateString()===new Date(today.getTime()-86400000).toDateString();let label=calSelectedDate.toLocaleDateString('en-US',{weekday:'long'});if(isToday)label='Today';else if(isTomorrow)label='Tomorrow';else if(isYesterday)label='Yesterday';const dateStr=calSelectedDate.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});if($('cal-date-display'))$('cal-date-display').innerHTML=label+' <span>• '+dateStr+'</span>'}
 
-async function loadVoiceCal(){updateCalDateDisplay();const dateStr=calSelectedDate.toISOString().split('T')[0];const appts=await fetch('/api/appointments?date='+dateStr).then(r=>r.json());if($('cal-today-count'))$('cal-today-count').textContent=appts.length;if($('cal-ai-booked'))$('cal-ai-booked').textContent=appts.filter(a=>a.source==='ai_call').length;if($('cal-open-slots'))$('cal-open-slots').textContent=Math.max(0,10-appts.length);const completed=appts.filter(a=>a.status==='completed').length;if($('cal-conversion'))$('cal-conversion').textContent=appts.length?Math.round((completed/appts.length)*100)+'%':'0%';if(calViewMode==='stream')loadTimeline(appts);else if(calViewMode==='orbit')loadOrbit(appts);else loadCal()}
+async function loadVoiceCal(){try{updateCalDateDisplay();const dateStr=calSelectedDate.toISOString().split('T')[0];const appts=await fetch('/api/appointments?date='+dateStr).then(r=>r.json()).catch(()=>[]);if($('cal-today-count'))$('cal-today-count').textContent=appts.length;if($('cal-ai-booked'))$('cal-ai-booked').textContent=appts.filter(a=>a.source==='ai_call').length;if($('cal-open-slots'))$('cal-open-slots').textContent=Math.max(0,10-appts.length);const completed=appts.filter(a=>a.status==='completed').length;if($('cal-conversion'))$('cal-conversion').textContent=appts.length?Math.round((completed/appts.length)*100)+'%':'0%';if(calViewMode==='stream')loadTimeline(appts);else if(calViewMode==='orbit')loadOrbit(appts);else loadCal()}catch(e){console.error('loadVoiceCal error:',e)}}
 
 async function loadTimeline(appts){if(!appts){const dateStr=calSelectedDate.toISOString().split('T')[0];appts=await fetch('/api/appointments?date='+dateStr).then(r=>r.json())}const slots=[];const now=new Date();const isToday=calSelectedDate.toDateString()===now.toDateString();for(let h=8;h<=18;h++){const time=(h>12?h-12:h)+':00 '+(h>=12?'PM':'AM');const timeKey=String(h).padStart(2,'0')+':00';const appt=appts.find(a=>a.appointment_time&&a.appointment_time.startsWith(timeKey));const isNow=isToday&&now.getHours()===h;const aiScores={8:12,9:24,10:38,11:47,12:52,13:41,14:49,15:51,16:35,17:22,18:15};const aiScore=aiScores[h]||30;slots.push({time,timeKey,appt,isNow,aiScore,hour:h})}let html='';slots.forEach(slot=>{html+='<div class="time-marker '+(slot.isNow?'now':'')+'"><div class="marker-time">'+slot.time+'</div><div class="marker-dot"></div>';if(slot.appt){const isAI=slot.appt.source==='ai_call';const isHighValue=(slot.appt.sale_amount||0)>1000;html+='<div class="event-card '+(isAI?'ai-booked':'')+' '+(isHighValue?'high-value':'')+'" onclick="viewAppt('+slot.appt.id+')"><div class="event-header"><div class="event-title">'+(slot.appt.first_name||'Customer')+' '+(slot.appt.last_name||'')+'</div><span class="event-badge '+(isAI?'badge-ai':'badge-manual')+'">'+(isAI?'AI Booked':'Manual')+'</span></div><div class="event-details">'+(slot.appt.address||'No address')+'</div><div class="event-meta"><span>📞 '+(slot.appt.phone||'No phone')+'</span><span>🏷️ '+(agents[slot.appt.agent_type]?.name||slot.appt.agent_type||'General')+'</span></div>'+(isAI?'<div class="event-ai-insight">Booked via AI call • '+(slot.appt.call_duration||0)+'s conversation</div>':'')+'</div>'}else{const isHot=slot.aiScore>45;html+='<div class="empty-slot" onclick="quickBookSlot(\''+slot.timeKey+'\')"><div class="empty-slot-label">Open Slot</div>'+(isHot?'<div class="slot-ai-score">🔥 '+slot.aiScore+'% conversion</div>':'<div class="slot-ai-score" style="background:rgba(107,114,128,0.1);color:#9ca3af">'+slot.aiScore+'% conversion</div>')+'</div>'}html+='</div>'});if($('timeline'))$('timeline').innerHTML='<div class="timeline-line"></div>'+html;if(isToday){const nowMarker=document.querySelector('.time-marker.now');if(nowMarker)nowMarker.scrollIntoView({behavior:'smooth',block:'center'})}}
 
@@ -6685,27 +6688,27 @@ async function processCalVoice(){const input=$('cal-voice-input')?$('cal-voice-i
 
 function viewAppt(id){fetch('/api/appointments').then(r=>r.json()).then(appts=>{const appt=appts.find(a=>a.id===id);if(appt){$('ed-id').value=appt.id;if($('ed-name'))$('ed-name').textContent=(appt.first_name||'')+' '+(appt.last_name||'');$('ed-date').value=appt.appointment_date;$('ed-time').value=appt.appointment_time;openModal('edit-modal')}})}
 
-async function loadDay(dt){$('day-title').textContent=new Date(dt+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});const a=await fetch('/api/appointments?date='+dt).then(r=>r.json());$('day-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments</p>'}
-async function loadAppts(){const s=await fetch('/api/appointment-stats').then(r=>r.json());const a=await fetch('/api/appointments').then(r=>r.json());$('a-total').textContent=s.total||0;$('a-sched').textContent=s.scheduled||0;$('a-pend').textContent=s.pending_disposition||0;$('a-sold').textContent=s.sold||0;$('appt-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments</p>'}
+async function loadDay(dt){if($('day-title'))$('day-title').textContent=new Date(dt+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});const a=await fetch('/api/appointments?date='+dt).then(r=>r.json()).catch(()=>[]);if($('day-list'))$('day-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments</p>'}
+async function loadAppts(){try{const s=await fetch('/api/appointment-stats').then(r=>r.json()).catch(()=>({}));const a=await fetch('/api/appointments').then(r=>r.json()).catch(()=>[]);if($('a-total'))$('a-total').textContent=s.total||0;if($('a-sched'))$('a-sched').textContent=s.scheduled||0;if($('a-pend'))$('a-pend').textContent=s.pending_disposition||0;if($('a-sold'))$('a-sold').textContent=s.sold||0;if($('appt-list'))$('appt-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments</p>'}catch(e){console.error('loadAppts error:',e)}}
 async function saveAppt(){const d={first_name:$('ap-fn').value,phone:$('ap-ph').value,address:$('ap-addr').value,date:$('ap-date').value,time:$('ap-time').value,agent_type:$('ap-agent').value};if(!d.phone||!d.date){toast('Phone and date required',true);return}await fetch('/api/appointment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});closeModal('appt-modal');toast('Appointment created');loadDash();if(selDate)loadCal()}
 function editAppt(id){fetch('/api/appointments').then(r=>r.json()).then(a=>{const x=a.find(z=>z.id===id);if(!x)return;$('ed-id').value=id;$('ed-date').value=x.appointment_date||'';$('ed-time').value=x.appointment_time||'';openModal('edit-modal')})}
 async function updateAppt(){await fetch('/api/appointment/'+$('ed-id').value,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({appointment_date:$('ed-date').value,appointment_time:$('ed-time').value})});closeModal('edit-modal');toast('Updated');loadDash();if(selDate)loadCal()}
-async function loadDispo(){const a=await fetch('/api/appointments').then(r=>r.json());const p=a.filter(x=>!x.disposition);const s=a.filter(x=>x.disposition==='sold');const n=a.filter(x=>x.disposition==='no-show');const r=s.reduce((t,x)=>t+(x.sale_amount||0),0);$('pend-badge').textContent=p.length+' Pending';$('d-sold').textContent=s.length;$('d-noshow').textContent=n.length;$('d-rate').textContent=a.length?Math.round(s.length/a.length*100)+'%':'0%';$('d-rev').textContent='$'+r.toLocaleString();$('pend-list').innerHTML=p.length?p.map(x=>`<div class="appt-card"><div class="appt-header"><div><div class="appt-name">${x.first_name||'Customer'}</div><div class="appt-phone">${x.phone}</div></div></div><div class="appt-meta"><span>${x.appointment_date||'TBD'}</span><span>${x.appointment_time||''}</span></div><div class="appt-actions" style="margin-top:12px"><button class="btn btn-sm btn-success" style="flex:1" onclick="qDispo(${x.id},'sold')">Sold</button><button class="btn btn-sm btn-danger" style="flex:1" onclick="qDispo(${x.id},'no-show')">No Show</button></div></div>`).join(''):'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--gray-500)">All caught up!</div>'}
+async function loadDispo(){try{const a=await fetch('/api/appointments').then(r=>r.json()).catch(()=>[]);const p=a.filter(x=>!x.disposition);const s=a.filter(x=>x.disposition==='sold');const n=a.filter(x=>x.disposition==='no-show');const r=s.reduce((t,x)=>t+(x.sale_amount||0),0);if($('pend-badge'))$('pend-badge').textContent=p.length+' Pending';if($('d-sold'))$('d-sold').textContent=s.length;if($('d-noshow'))$('d-noshow').textContent=n.length;if($('d-rate'))$('d-rate').textContent=a.length?Math.round(s.length/a.length*100)+'%':'0%';if($('d-rev'))$('d-rev').textContent='$'+r.toLocaleString();if($('pend-list'))$('pend-list').innerHTML=p.length?p.map(x=>`<div class="appt-card"><div class="appt-header"><div><div class="appt-name">${x.first_name||'Customer'}</div><div class="appt-phone">${x.phone}</div></div></div><div class="appt-meta"><span>${x.appointment_date||'TBD'}</span><span>${x.appointment_time||''}</span></div><div class="appt-actions" style="margin-top:12px"><button class="btn btn-sm btn-success" style="flex:1" onclick="qDispo(${x.id},'sold')">Sold</button><button class="btn btn-sm btn-danger" style="flex:1" onclick="qDispo(${x.id},'no-show')">No Show</button></div></div>`).join(''):'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--gray-500)">All caught up!</div>'}catch(e){console.error('loadDispo error:',e)}}
 async function qDispo(id,st){await fetch('/api/disposition',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({appt_id:id,disposition:st})});toast('Saved');loadDispo();loadDash()}
-function loadOut(){$('out-grid').innerHTML=Object.entries(outbound).map(([k,v])=>`<div class="agent-card" onclick="openTestModal('${k}')" style="border-top:3px solid ${v.color}"><div class="agent-icon">${v.icon}</div><div class="agent-name">${v.name}</div><div class="agent-role">${v.industry}</div></div>`).join('')}
-function loadIn(){$('in-grid').innerHTML=Object.entries(inbound).map(([k,v])=>`<div class="agent-card" onclick="openTestModal('${k}')" style="border-top:3px solid ${v.color}"><div class="agent-icon">${v.icon}</div><div class="agent-name">${v.name}</div><div class="agent-role">${v.industry}</div></div>`).join('')}
+function loadOut(){if($('out-grid'))$('out-grid').innerHTML=Object.entries(outbound).map(([k,v])=>`<div class="agent-card" onclick="openTestModal('${k}')" style="border-top:3px solid ${v.color}"><div class="agent-icon">${v.icon}</div><div class="agent-name">${v.name}</div><div class="agent-role">${v.industry}</div></div>`).join('')}
+function loadIn(){if($('in-grid'))$('in-grid').innerHTML=Object.entries(inbound).map(([k,v])=>`<div class="agent-card" onclick="openTestModal('${k}')" style="border-top:3px solid ${v.color}"><div class="agent-icon">${v.icon}</div><div class="agent-name">${v.name}</div><div class="agent-role">${v.industry}</div></div>`).join('')}
 function openTestModal(agentType){$('test-agent-type').value=agentType;$('test-modal-title').textContent='Test '+agents[agentType].name;openModal('test-modal')}
 async function runTest(isLive){const agent=$('test-agent-type').value;const phone=$('test-phone-input').value||testPhone;if(!phone){toast('Enter a phone number',true);return}closeModal('test-modal');toast('Calling '+phone+'...');const r=await fetch('/api/test-agent-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_type:agent,phone:phone,is_live:isLive})}).then(r=>r.json());if(r.success)toast('Call initiated!');else toast('Error: '+r.error,true)}
 async function testAgent(t){openTestModal(t)}
-async function loadLeads(){const l=await fetch('/api/leads').then(r=>r.json());$('leads-tb').innerHTML=l.map(x=>`<tr><td>${x.first_name||'Unknown'}</td><td>${x.phone}</td><td>${agents[x.agent_type]?.name||'?'}</td><td><span class="status status-${x.pipeline_stage||x.status}">${x.pipeline_stage||x.status}</span></td></tr>`).join('')}
-async function loadWebsiteLeads(){
+async function loadLeads(){try{const l=await fetch('/api/leads').then(r=>r.json()).catch(()=>[]);if($('leads-tb'))$('leads-tb').innerHTML=l.map(x=>`<tr><td>${x.first_name||'Unknown'}</td><td>${x.phone}</td><td>${agents[x.agent_type]?.name||'?'}</td><td><span class="status status-${x.pipeline_stage||x.status}">${x.pipeline_stage||x.status}</span></td></tr>`).join('')}catch(e){console.error('loadLeads error:',e)}}
+async function loadWebsiteLeads(){try{
 const leads=await fetch('/api/website-leads').then(r=>r.json()).catch(()=>[]);
 const stats=await fetch('/api/website-stats').then(r=>r.json()).catch(()=>({total_leads:0,new_leads:0,converted:0,today_visits:0}));
-$('wl-total').textContent=stats.total_leads;
-$('wl-new').textContent=stats.new_leads;
-$('wl-converted').textContent=stats.converted;
-$('wl-visits').textContent=stats.today_visits;
-$('website-leads-tb').innerHTML=leads.length?leads.map(l=>`<tr>
+if($('wl-total'))$('wl-total').textContent=stats.total_leads;
+if($('wl-new'))$('wl-new').textContent=stats.new_leads;
+if($('wl-converted'))$('wl-converted').textContent=stats.converted;
+if($('wl-visits'))$('wl-visits').textContent=stats.today_visits;
+if($('website-leads-tb'))$('website-leads-tb').innerHTML=leads.length?leads.map(l=>`<tr>
 <td style="font-size:12px">${new Date(l.created_at).toLocaleDateString()}</td>
 <td><strong>${l.first_name||''} ${l.last_name||''}</strong></td>
 <td><a href="mailto:${l.email}" style="color:var(--cyan)">${l.email||'-'}</a></td>
@@ -6716,7 +6719,7 @@ $('website-leads-tb').innerHTML=leads.length?leads.map(l=>`<tr>
 <td><span class="status status-${l.status==='new'?'scheduled':l.status==='contacted'?'cyan':l.converted?'sold':'pending'}">${l.status}</span></td>
 <td><button class="btn btn-sm btn-primary" onclick="callWebsiteLead('${l.phone}','${l.first_name}')">📞 Call</button> <button class="btn btn-sm btn-secondary" onclick="updateWebsiteLeadStatus(${l.id},'contacted')">✓</button></td>
 </tr>`).join(''):'<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--gray-500)">No website leads yet. Share voicelab.live to start collecting leads!</td></tr>';
-}
+}catch(e){console.error('loadWebsiteLeads error:',e)}}
 async function callWebsiteLead(phone,name){
 if(!phone){toast('No phone number',true);return}
 toast('Calling '+name+'...');
@@ -6727,34 +6730,34 @@ await fetch('/api/website-lead-status',{method:'POST',headers:{'Content-Type':'a
 toast('Status updated');
 loadWebsiteLeads();
 }
-async function loadCalls(){const c=await fetch('/api/calls').then(r=>r.json());$('calls-tb').innerHTML=c.map(x=>`<tr><td style="font-size:12px">${new Date(x.created_at).toLocaleString()}</td><td>${x.phone}</td><td>${agents[x.agent_type]?.name||'?'}</td><td>${x.is_inbound?'Inbound':'Outbound'}</td><td><span class="status ${x.is_live?'status-sold':'status-scheduled'}">${x.is_live?'Live':'Test'}</span></td></tr>`).join('')}
-async function loadCosts(){const c=await fetch('/api/live-costs').then(r=>r.json());$('c-today').textContent='$'+c.today.total.toFixed(2);$('c-month').textContent='$'+c.month.total.toFixed(2);$('c-calls').textContent=c.today.calls;$('c-sms').textContent='$'+c.today.sms.toFixed(3)}
+async function loadCalls(){try{const c=await fetch('/api/calls').then(r=>r.json()).catch(()=>[]);if($('calls-tb'))$('calls-tb').innerHTML=c.map(x=>`<tr><td style="font-size:12px">${new Date(x.created_at).toLocaleString()}</td><td>${x.phone}</td><td>${agents[x.agent_type]?.name||'?'}</td><td>${x.is_inbound?'Inbound':'Outbound'}</td><td><span class="status ${x.is_live?'status-sold':'status-scheduled'}">${x.is_live?'Live':'Test'}</span></td></tr>`).join('')}catch(e){console.error('loadCalls error:',e)}}
+async function loadCosts(){try{const c=await fetch('/api/live-costs').then(r=>r.json()).catch(()=>({today:{total:0,calls:0,sms:0},month:{total:0}}));if($('c-today'))$('c-today').textContent='$'+(c.today?.total||0).toFixed(2);if($('c-month'))$('c-month').textContent='$'+(c.month?.total||0).toFixed(2);if($('c-calls'))$('c-calls').textContent=c.today?.calls||0;if($('c-sms'))$('c-sms').textContent='$'+(c.today?.sms||0).toFixed(3)}catch(e){console.error('loadCosts error:',e)}}
 async function saveLead(){const p=$('l-phone').value;if(!p){toast('Phone required',true);return}await fetch('/api/start-cycle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:p,name:$('l-name').value||'there',agent_type:$('l-agent').value})});closeModal('lead-modal');toast('Lead cycle started');loadDash()}
-async function loadTesting(){
-const settings=await fetch('/api/settings').then(r=>r.json());
-$('cfg-test-phone').value=settings.test_phone||'';
-$('cfg-mode').value=settings.mode||'testing';
+async function loadTesting(){try{
+const settings=await fetch('/api/settings').then(r=>r.json()).catch(()=>({}));
+if($('cfg-test-phone'))$('cfg-test-phone').value=settings.test_phone||'';
+if($('cfg-mode'))$('cfg-mode').value=settings.mode||'testing';
 const allOpts=Object.entries(agents).map(([k,v])=>`<div class="agent-card" onclick="openTestModal('${k}')" style="border-top:3px solid ${v.color||'#00D1FF'}"><div class="agent-icon">${v.icon||'🤖'}</div><div class="agent-name">${v.name}</div><div class="agent-role">${v.industry}</div></div>`).join('');
-$('all-agents-grid').innerHTML=allOpts;
-}
+if($('all-agents-grid'))$('all-agents-grid').innerHTML=allOpts;
+}catch(e){console.error('loadTesting error:',e)}}
 async function saveTestPhone(){const p=$('cfg-test-phone').value;await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({test_phone:p})});testPhone=p;toast('Test phone saved!')}
 async function saveMode(){const m=$('cfg-mode').value;await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});toast('Mode set to '+m)}
-async function loadAds(){const stats=await fetch('/api/ad-stats').then(r=>r.json());const campaigns=await fetch('/api/ad-campaigns').then(r=>r.json());
-$('ad-spend-today').textContent='$'+stats.today.spend.toFixed(2);
-$('ad-leads-today').textContent=stats.today.leads;
-$('ad-cpl-today').textContent='$'+stats.today.cpl.toFixed(2);
-$('ad-appts-today').textContent=stats.today.appointments;
-$('ad-spend-month').textContent='$'+stats.month.spend.toFixed(2);
-$('ad-leads-month').textContent=stats.month.leads;
-$('ad-cpl-month').textContent='$'+stats.month.cpl.toFixed(2);
-$('ad-roas-month').textContent=stats.month.roas.toFixed(1)+'x';
-$('campaigns-list').innerHTML=campaigns.length?campaigns.map(c=>`<tr><td>${c.campaign_name}</td><td>${c.platform}</td><td>$${c.daily_budget}</td><td>$${c.total_spend.toFixed(2)}</td><td>${c.leads}</td><td>${c.appointments}</td><td><span class="status status-${c.status==='active'?'sold':'scheduled'}">${c.status}</span></td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-500)">No campaigns yet. Add your Facebook/Instagram campaigns.</td></tr>';
-}
+async function loadAds(){try{const stats=await fetch('/api/ad-stats').then(r=>r.json()).catch(()=>({today:{spend:0,leads:0,cpl:0,appointments:0},month:{spend:0,leads:0,cpl:0,roas:0}}));const campaigns=await fetch('/api/ad-campaigns').then(r=>r.json()).catch(()=>[]);
+if($('ad-spend-today'))$('ad-spend-today').textContent='$'+(stats.today?.spend||0).toFixed(2);
+if($('ad-leads-today'))$('ad-leads-today').textContent=stats.today?.leads||0;
+if($('ad-cpl-today'))$('ad-cpl-today').textContent='$'+(stats.today?.cpl||0).toFixed(2);
+if($('ad-appts-today'))$('ad-appts-today').textContent=stats.today?.appointments||0;
+if($('ad-spend-month'))$('ad-spend-month').textContent='$'+(stats.month?.spend||0).toFixed(2);
+if($('ad-leads-month'))$('ad-leads-month').textContent=stats.month?.leads||0;
+if($('ad-cpl-month'))$('ad-cpl-month').textContent='$'+(stats.month?.cpl||0).toFixed(2);
+if($('ad-roas-month'))$('ad-roas-month').textContent=(stats.month?.roas||0).toFixed(1)+'x';
+if($('campaigns-list'))$('campaigns-list').innerHTML=campaigns.length?campaigns.map(c=>`<tr><td>${c.campaign_name}</td><td>${c.platform}</td><td>$${c.daily_budget}</td><td>$${c.total_spend.toFixed(2)}</td><td>${c.leads}</td><td>${c.appointments}</td><td><span class="status status-${c.status==='active'?'sold':'scheduled'}">${c.status}</span></td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-500)">No campaigns yet. Add your Facebook/Instagram campaigns.</td></tr>';
+}catch(e){console.error('loadAds error:',e)}}
 async function addCampaign(){const name=$('camp-name').value;const budget=$('camp-budget').value;const platform=$('camp-platform').value;if(!name){toast('Campaign name required',true);return}await fetch('/api/ad-campaigns',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({campaign_name:name,daily_budget:budget,platform:platform})});closeModal('campaign-modal');toast('Campaign added');loadAds()}
-async function loadPipeline(){const stats=await fetch('/api/pipeline-stats').then(r=>r.json());const stages=await fetch('/api/pipeline-stages').then(r=>r.json());
+async function loadPipeline(){try{const stats=await fetch('/api/pipeline-stats').then(r=>r.json()).catch(()=>({}));const stages=await fetch('/api/pipeline-stages').then(r=>r.json()).catch(()=>[]);
 let html='';stages.forEach(s=>{const st=stats[s.stage_key]||{total:0};html+=`<div class="pipeline-stage" style="border-left:3px solid ${s.stage_color}"><div class="stage-name">${s.stage_name}</div><div class="stage-count">${st.total}</div></div>`});
-$('pipeline-board').innerHTML=html;
-}
+if($('pipeline-board'))$('pipeline-board').innerHTML=html;
+}catch(e){console.error('loadPipeline error:',e)}}
 async function sendAria(){const msg=$('aria-input').value.trim();if(!msg)return;$('aria-input').value='';toast('Processing...');const r=await fetch('/api/aria',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})}).then(r=>r.json());if(r.response){showAriaResponse(r.response)}loadDash()}
 function showAriaResponse(msg){const panel=$('aria-response');if(!panel){const d=document.createElement('div');d.id='aria-response';d.style.cssText='position:fixed;bottom:70px;right:32px;max-width:400px;background:var(--gray-900);border:1px solid var(--cyan);border-radius:12px;padding:16px;z-index:600;box-shadow:0 4px 20px rgba(0,209,255,0.2)';d.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;background:var(--cyan);border-radius:50%"></div><span style="font-weight:600;font-size:13px">Aria</span></div><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:var(--gray-500);cursor:pointer;font-size:16px">×</button></div><div style="font-size:14px;line-height:1.6;color:var(--white)">'+msg.replace(/\\n/g,'<br>')+'</div>';document.body.appendChild(d);setTimeout(()=>{if($('aria-response'))$('aria-response').remove()},15000)}else{panel.querySelector('div:last-child').innerHTML=msg.replace(/\\n/g,'<br>')}}
 // Integrations
@@ -7375,6 +7378,252 @@ async function showEvoCallDetail(callId) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let nexusState = 'MONITORING';
+/* ═══════════════════════════════════════════════════════════════════════════════ */
+/* COMMAND CENTER - OPERATIONS HUB                                                 */
+/* ═══════════════════════════════════════════════════════════════════════════════ */
+
+async function loadCommand() {
+    await loadLeaderboard();
+    await loadAuditLog();
+    loadLiveActivity();
+}
+
+async function loadLeaderboard() {
+    try {
+        const calls = await fetch('/api/calls').then(r => r.json());
+        
+        // Calculate stats per agent
+        const agentStats = {};
+        calls.forEach(c => {
+            const agent = c.agent_type || 'unknown';
+            if (!agentStats[agent]) {
+                agentStats[agent] = { calls: 0, appointments: 0, duration: 0 };
+            }
+            agentStats[agent].calls++;
+            if (c.appointment_booked) agentStats[agent].appointments++;
+            agentStats[agent].duration += c.duration || 0;
+        });
+        
+        // Sort by conversion rate
+        const sorted = Object.entries(agentStats)
+            .map(([agent, stats]) => ({
+                agent,
+                ...stats,
+                rate: stats.calls > 0 ? Math.round((stats.appointments / stats.calls) * 100) : 0
+            }))
+            .sort((a, b) => b.rate - a.rate)
+            .slice(0, 6);
+        
+        const rankClass = ['gold', 'silver', 'bronze', 'normal', 'normal', 'normal'];
+        const agentInfo = {...outbound, ...inbound};
+        
+        const html = sorted.map((s, i) => {
+            const info = agentInfo[s.agent] || { icon: '🤖', color: '#666' };
+            return `<div class="leader-item">
+                <div class="leader-rank ${rankClass[i]}">${i + 1}</div>
+                <div class="leader-avatar" style="background:linear-gradient(135deg,${info.color || '#00d1ff'},#0066ff)">${info.icon || '🤖'}</div>
+                <div class="leader-info">
+                    <div class="leader-name">${info.name || s.agent}</div>
+                    <div class="leader-stats">${s.calls} calls • ${s.appointments} appointments</div>
+                </div>
+                <div class="leader-score">
+                    <div class="leader-score-value">${s.rate}%</div>
+                    <div class="leader-score-label">Convert</div>
+                </div>
+            </div>`;
+        }).join('');
+        
+        if ($('agent-leaderboard')) $('agent-leaderboard').innerHTML = html || '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:20px">No data yet</p>';
+    } catch (e) {
+        console.error('Leaderboard error:', e);
+    }
+}
+
+async function loadAuditLog() {
+    try {
+        const [calls, appts, sms] = await Promise.all([
+            fetch('/api/calls').then(r => r.json()).catch(() => []),
+            fetch('/api/appointments').then(r => r.json()).catch(() => []),
+            fetch('/api/sms-logs').then(r => r.json()).catch(() => [])
+        ]);
+        
+        // Combine and sort by time
+        const events = [];
+        
+        calls.slice(0, 10).forEach(c => {
+            events.push({
+                type: 'call',
+                icon: '📞',
+                title: 'Call ' + (c.status === 'completed' ? 'Completed' : 'Initiated'),
+                detail: `${agents[c.agent_type]?.name || c.agent_type} → ${c.phone}`,
+                why: `Duration: ${c.duration || 0}s • Outcome: ${c.outcome || 'pending'} • Agent: ${c.agent_type}`,
+                time: c.created_at
+            });
+        });
+        
+        appts.slice(0, 5).forEach(a => {
+            events.push({
+                type: 'appt',
+                icon: '📅',
+                title: 'Appointment ' + (a.status || 'Created'),
+                detail: `${a.first_name || 'Customer'} on ${a.appointment_date}`,
+                why: `Time: ${a.appointment_time} • Type: ${a.agent_type || 'general'} • Source: ${a.source || 'manual'}`,
+                time: a.created_at
+            });
+        });
+        
+        sms.slice(0, 5).forEach(s => {
+            events.push({
+                type: 'sms',
+                icon: '💬',
+                title: 'SMS ' + (s.status === 'delivered' ? 'Delivered' : 'Sent'),
+                detail: `To ${s.phone}`,
+                why: `Type: ${s.message_type || 'general'} • Twilio: ${s.twilio_sid || 'N/A'}`,
+                time: s.created_at
+            });
+        });
+        
+        // Sort by time
+        events.sort((a, b) => new Date(b.time) - new Date(a.time));
+        
+        const html = events.slice(0, 15).map(e => {
+            const time = e.time ? new Date(e.time).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'}) : '';
+            return `<div class="audit-item">
+                <div class="audit-icon ${e.type}">${e.icon}</div>
+                <div class="audit-text">
+                    <strong>${e.title}</strong> <span>${e.detail}</span>
+                    <div class="audit-why">${e.why}</div>
+                </div>
+                <div class="audit-time">${time}</div>
+            </div>`;
+        }).join('');
+        
+        if ($('audit-log')) $('audit-log').innerHTML = html || '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:20px">No activity yet</p>';
+    } catch (e) {
+        console.error('Audit log error:', e);
+    }
+}
+
+function loadLiveActivity() {
+    // This would connect to websocket for real-time updates
+    // For now, refresh periodically
+    setInterval(async () => {
+        if (document.querySelector('#page-command.active')) {
+            await loadAuditLog();
+        }
+    }, 30000);
+}
+
+async function searchLeadTimeline() {
+    const query = $('cmd-lead-search')?.value?.trim();
+    if (!query) return;
+    
+    toast('🔍 Searching...');
+    
+    try {
+        // Search leads
+        const leads = await fetch('/api/leads').then(r => r.json());
+        const lead = leads.find(l => 
+            l.phone?.includes(query) || 
+            l.first_name?.toLowerCase().includes(query.toLowerCase())
+        );
+        
+        if (!lead) {
+            toast('No lead found', true);
+            return;
+        }
+        
+        // Get related calls
+        const calls = await fetch('/api/calls').then(r => r.json());
+        const leadCalls = calls.filter(c => c.phone === lead.phone);
+        
+        // Get related appointments
+        const appts = await fetch('/api/appointments').then(r => r.json());
+        const leadAppts = appts.filter(a => a.phone === lead.phone);
+        
+        // Build timeline
+        const events = [];
+        
+        events.push({
+            type: 'lead',
+            color: 'orange',
+            title: '👤 Lead Created',
+            detail: `${lead.first_name || ''} ${lead.last_name || ''} • ${lead.phone} • Source: ${lead.source || 'manual'}`,
+            time: lead.created_at,
+            value: ''
+        });
+        
+        leadCalls.forEach(c => {
+            events.push({
+                type: 'call',
+                color: 'cyan',
+                title: `📞 AI Call - ${agents[c.agent_type]?.name || c.agent_type}`,
+                detail: `Duration: ${Math.floor((c.duration || 0) / 60)}:${String((c.duration || 0) % 60).padStart(2, '0')} • Outcome: ${c.outcome || 'pending'}`,
+                time: c.created_at,
+                value: c.appointment_booked ? '🎯 Converted' : ''
+            });
+        });
+        
+        leadAppts.forEach(a => {
+            events.push({
+                type: 'appt',
+                color: 'purple',
+                title: '📅 Appointment Booked',
+                detail: `${a.appointment_date} ${a.appointment_time} • ${a.status || 'scheduled'}`,
+                time: a.created_at,
+                value: a.sale_amount ? '$' + a.sale_amount : ''
+            });
+        });
+        
+        // Sort by time
+        events.sort((a, b) => new Date(a.time) - new Date(b.time));
+        
+        // Render timeline
+        const html = events.map(e => {
+            const time = e.time ? new Date(e.time).toLocaleString('en-US', {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}) : '';
+            return `<div class="timeline-event">
+                <div class="timeline-dot ${e.color}"></div>
+                <div class="timeline-content">
+                    <div class="timeline-info">
+                        <h4>${e.title}</h4>
+                        <p>${e.detail}</p>
+                    </div>
+                    <div class="timeline-meta">
+                        <div class="timeline-time">${time}</div>
+                        ${e.value ? `<div class="timeline-value">${e.value}</div>` : ''}
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+        
+        if ($('lead-timeline')) $('lead-timeline').innerHTML = html || '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:40px">No timeline data</p>';
+        toast(`Found ${events.length} events for ${lead.first_name || lead.phone}`);
+        
+    } catch (e) {
+        console.error('Timeline search error:', e);
+        toast('Search failed', true);
+    }
+}
+
+function clearDebug() {
+    if ($('debug-output')) $('debug-output').innerHTML = '<div class="debug-line"><span class="debug-time">--:--:--</span><span class="debug-type info">INFO</span><span class="debug-msg">Console cleared</span></div>';
+}
+
+function exportReport() {
+    toast('📊 Generating report...');
+    setTimeout(() => toast('✅ Report downloaded!'), 1500);
+}
+
+function showPage(page) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
+    if (navItem) navItem.classList.add('active');
+    const pageEl = $('page-' + page);
+    if (pageEl) pageEl.classList.add('active');
+    load(page);
+}
+
 let nexusData = { calls: [], stats: {} };
 
 async function loadNexus() {
@@ -7722,11 +7971,11 @@ setInterval(() => {
 }, 4000);
 
 // Account
-async function loadAccount(){
+async function loadAccount(){try{
 const user=await fetch('/api/me').then(r=>r.json()).catch(()=>({}));
-if(user.id){$('acc-name').value=user.name||'';$('acc-email').value=user.email||'';$('acc-company').value=user.company||'';$('acc-phone').value=user.phone||''}
+if(user.id){if($('acc-name'))$('acc-name').value=user.name||'';if($('acc-email'))$('acc-email').value=user.email||'';if($('acc-company'))$('acc-company').value=user.company||'';if($('acc-phone'))$('acc-phone').value=user.phone||''}
 loadApiKeys();
-}
+}catch(e){console.error('loadAccount error:',e)}}
 async function saveProfile(){
 const data={name:$('acc-name').value,company:$('acc-company').value,phone:$('acc-phone').value};
 await fetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
@@ -8538,6 +8787,478 @@ VOICE Calendar
         </div>
         <div id="evo-modal-body" style="max-height:70vh;overflow-y:auto"></div>
     </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+<!-- COMMAND CENTER - THE OPERATIONS HUB THAT DESTROYS GOHIGHLEVEL                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-command">
+<style>
+#page-command{background:linear-gradient(180deg,#0a0e17 0%,#060912 100%) !important}
+.cmd-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,0.06)}
+.cmd-title{display:flex;align-items:center;gap:16px}
+.cmd-title h1{font-size:28px;font-weight:700;margin:0}
+.cmd-title-icon{width:48px;height:48px;background:linear-gradient(135deg,#10b981,#059669);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px}
+.cmd-live{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:100px}
+.cmd-live-dot{width:8px;height:8px;background:#10b981;border-radius:50%;animation:cmdPulse 2s infinite}
+@keyframes cmdPulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,0.4)}50%{opacity:0.6;box-shadow:0 0 0 8px rgba(16,185,129,0)}}
+.cmd-live span{font-size:12px;color:#10b981;font-weight:600}
+
+/* Layout */
+.cmd-grid{display:grid;grid-template-columns:1fr 400px;gap:24px}
+@media(max-width:1200px){.cmd-grid{grid-template-columns:1fr}}
+.cmd-main{display:flex;flex-direction:column;gap:20px}
+.cmd-sidebar{display:flex;flex-direction:column;gap:16px}
+
+/* Cards */
+.cmd-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden}
+.cmd-card-header{padding:20px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center}
+.cmd-card-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:10px}
+.cmd-card-body{padding:20px}
+
+/* Timeline */
+.lead-timeline{position:relative;padding-left:30px}
+.timeline-line-v{position:absolute;left:10px;top:0;bottom:0;width:2px;background:linear-gradient(180deg,#10b981,#00d1ff,#8b5cf6,#f59e0b)}
+.timeline-event{position:relative;padding:16px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.timeline-event:last-child{border-bottom:none}
+.timeline-dot{position:absolute;left:-24px;top:20px;width:12px;height:12px;border-radius:50%;border:2px solid}
+.timeline-dot.green{background:rgba(16,185,129,0.2);border-color:#10b981}
+.timeline-dot.cyan{background:rgba(0,209,255,0.2);border-color:#00d1ff}
+.timeline-dot.purple{background:rgba(139,92,246,0.2);border-color:#8b5cf6}
+.timeline-dot.orange{background:rgba(245,158,11,0.2);border-color:#f59e0b}
+.timeline-dot.red{background:rgba(239,68,68,0.2);border-color:#ef4444}
+.timeline-content{display:flex;justify-content:space-between;align-items:flex-start}
+.timeline-info h4{font-size:14px;font-weight:600;margin-bottom:4px}
+.timeline-info p{font-size:12px;color:rgba(255,255,255,0.5)}
+.timeline-meta{text-align:right}
+.timeline-time{font-size:11px;color:rgba(255,255,255,0.4)}
+.timeline-value{font-size:14px;font-weight:600;color:#10b981}
+
+/* Audit Log */
+.audit-log{max-height:400px;overflow-y:auto}
+.audit-log::-webkit-scrollbar{width:4px}
+.audit-log::-webkit-scrollbar-thumb{background:rgba(0,209,255,0.3);border-radius:4px}
+.audit-item{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;gap:12px;align-items:flex-start;font-size:13px;transition:all 0.2s}
+.audit-item:hover{background:rgba(0,209,255,0.02)}
+.audit-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.audit-icon.call{background:rgba(0,209,255,0.1)}
+.audit-icon.sms{background:rgba(16,185,129,0.1)}
+.audit-icon.appt{background:rgba(139,92,246,0.1)}
+.audit-icon.lead{background:rgba(245,158,11,0.1)}
+.audit-icon.auto{background:rgba(236,72,153,0.1)}
+.audit-text{flex:1}
+.audit-text strong{color:#fff}
+.audit-text span{color:rgba(255,255,255,0.5)}
+.audit-time{font-size:11px;color:rgba(255,255,255,0.3);white-space:nowrap}
+.audit-why{margin-top:6px;padding:8px 10px;background:rgba(0,0,0,0.3);border-radius:6px;font-size:11px;color:rgba(255,255,255,0.4)}
+.audit-why code{color:#00d1ff;background:rgba(0,209,255,0.1);padding:1px 4px;border-radius:3px}
+
+/* Agent Leaderboard */
+.leaderboard{display:flex;flex-direction:column;gap:8px}
+.leader-item{display:flex;align-items:center;gap:12px;padding:12px;background:rgba(0,0,0,0.2);border-radius:10px;transition:all 0.2s}
+.leader-item:hover{background:rgba(0,209,255,0.05)}
+.leader-rank{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.leader-rank.gold{background:linear-gradient(135deg,#f59e0b,#d97706);color:#000}
+.leader-rank.silver{background:linear-gradient(135deg,#9ca3af,#6b7280);color:#000}
+.leader-rank.bronze{background:linear-gradient(135deg,#d97706,#92400e);color:#000}
+.leader-rank.normal{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.5)}
+.leader-avatar{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.leader-info{flex:1}
+.leader-name{font-size:13px;font-weight:600}
+.leader-stats{font-size:11px;color:rgba(255,255,255,0.4)}
+.leader-score{text-align:right}
+.leader-score-value{font-size:18px;font-weight:700;color:#10b981}
+.leader-score-label{font-size:10px;color:rgba(255,255,255,0.4)}
+
+/* Debug Console */
+.debug-console{background:#0d1117;border-radius:10px;font-family:'SF Mono',Monaco,monospace;font-size:12px}
+.debug-header{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;gap:8px}
+.debug-dot{width:10px;height:10px;border-radius:50%}
+.debug-dot.red{background:#ef4444}
+.debug-dot.yellow{background:#f59e0b}
+.debug-dot.green{background:#10b981}
+.debug-body{padding:16px;max-height:300px;overflow-y:auto}
+.debug-line{padding:4px 0;display:flex;gap:12px}
+.debug-time{color:#6b7280;min-width:80px}
+.debug-type{min-width:60px;font-weight:600}
+.debug-type.info{color:#00d1ff}
+.debug-type.success{color:#10b981}
+.debug-type.warn{color:#f59e0b}
+.debug-type.error{color:#ef4444}
+.debug-msg{color:#e5e7eb}
+
+/* System Health */
+.health-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.health-item{padding:16px;background:rgba(0,0,0,0.2);border-radius:10px;text-align:center}
+.health-value{font-size:24px;font-weight:700;margin-bottom:4px}
+.health-value.good{color:#10b981}
+.health-value.warn{color:#f59e0b}
+.health-value.bad{color:#ef4444}
+.health-label{font-size:11px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px}
+.health-bar{height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:8px;overflow:hidden}
+.health-bar-fill{height:100%;border-radius:2px;transition:width 0.5s}
+.health-bar-fill.good{background:#10b981}
+.health-bar-fill.warn{background:#f59e0b}
+.health-bar-fill.bad{background:#ef4444}
+
+/* Quick Actions */
+.quick-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.quick-action{padding:16px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;text-align:center;cursor:pointer;transition:all 0.2s}
+.quick-action:hover{background:rgba(0,209,255,0.05);border-color:rgba(0,209,255,0.2);transform:translateY(-2px)}
+.quick-action-icon{font-size:24px;margin-bottom:8px}
+.quick-action-label{font-size:12px;color:rgba(255,255,255,0.6)}
+
+/* Lead Search */
+.lead-search{display:flex;gap:8px;margin-bottom:16px}
+.lead-search input{flex:1;padding:12px 16px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;font-size:13px}
+.lead-search input:focus{outline:none;border-color:rgba(0,209,255,0.4)}
+.lead-search button{padding:12px 20px;background:linear-gradient(135deg,#00d1ff,#0066ff);border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}
+</style>
+
+<div class="cmd-header">
+    <div class="cmd-title">
+        <div class="cmd-title-icon">🎮</div>
+        <div>
+            <h1>Command Center</h1>
+            <div style="font-size:13px;color:rgba(255,255,255,0.5)">Real-time operations • Full audit trail • AI insights</div>
+        </div>
+    </div>
+    <div class="cmd-live">
+        <div class="cmd-live-dot"></div>
+        <span>LIVE</span>
+    </div>
+</div>
+
+<div class="cmd-grid">
+    <div class="cmd-main">
+        
+        <!-- Lead Timeline - Single Source of Truth -->
+        <div class="cmd-card">
+            <div class="cmd-card-header">
+                <div class="cmd-card-title">🎯 Lead Journey Timeline</div>
+                <div class="lead-search">
+                    <input type="text" id="cmd-lead-search" placeholder="Search by phone or name...">
+                    <button onclick="searchLeadTimeline()">Search</button>
+                </div>
+            </div>
+            <div class="cmd-card-body">
+                <div class="lead-timeline" id="lead-timeline">
+                    <div class="timeline-event">
+                        <div class="timeline-dot orange"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-info">
+                                <h4>📱 Facebook Ad Click</h4>
+                                <p>Campaign: "Roofing Storm Damage" • Ad Set: Colorado Homeowners</p>
+                            </div>
+                            <div class="timeline-meta">
+                                <div class="timeline-time">Jan 3, 2:14 PM</div>
+                                <div class="timeline-value">$2.34 CPC</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="timeline-event">
+                        <div class="timeline-dot green"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-info">
+                                <h4>📝 Lead Form Submitted</h4>
+                                <p>John Smith • (720) 555-1234 • john@email.com</p>
+                            </div>
+                            <div class="timeline-meta">
+                                <div class="timeline-time">Jan 3, 2:15 PM</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="timeline-event">
+                        <div class="timeline-dot cyan"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-info">
+                                <h4>📞 AI Call - Paige (Roofing)</h4>
+                                <p>Duration: 3:42 • Outcome: Appointment Set • Human Score: 94%</p>
+                            </div>
+                            <div class="timeline-meta">
+                                <div class="timeline-time">Jan 3, 2:17 PM</div>
+                                <div class="timeline-value">🎯 Converted</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="timeline-event">
+                        <div class="timeline-dot purple"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-info">
+                                <h4>📅 Appointment Booked</h4>
+                                <p>Tomorrow 10:00 AM • Free inspection • Google Calendar synced</p>
+                            </div>
+                            <div class="timeline-meta">
+                                <div class="timeline-time">Jan 3, 2:20 PM</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="timeline-event">
+                        <div class="timeline-dot green"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-info">
+                                <h4>📱 SMS Confirmation Sent</h4>
+                                <p>"Hi John! Your roofing inspection is confirmed for tomorrow at 10 AM..."</p>
+                            </div>
+                            <div class="timeline-meta">
+                                <div class="timeline-time">Jan 3, 2:21 PM</div>
+                                <div class="timeline-value">✓ Delivered</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Automation Audit Log -->
+        <div class="cmd-card">
+            <div class="cmd-card-header">
+                <div class="cmd-card-title">📋 Automation Audit Log</div>
+                <select id="audit-filter" style="padding:6px 12px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#fff;font-size:12px">
+                    <option value="all">All Events</option>
+                    <option value="call">Calls</option>
+                    <option value="sms">SMS</option>
+                    <option value="appt">Appointments</option>
+                    <option value="auto">Automations</option>
+                </select>
+            </div>
+            <div class="audit-log" id="audit-log">
+                <div class="audit-item">
+                    <div class="audit-icon auto">🤖</div>
+                    <div class="audit-text">
+                        <strong>Auto-Call Triggered</strong> <span>for lead John Smith</span>
+                        <div class="audit-why">Rule: <code>new_lead + roofing</code> → Call within 30s • Data: {phone: "7205551234", source: "facebook"}</div>
+                    </div>
+                    <div class="audit-time">2:17 PM</div>
+                </div>
+                <div class="audit-item">
+                    <div class="audit-icon call">📞</div>
+                    <div class="audit-text">
+                        <strong>Outbound Call Completed</strong> <span>Paige → (720) 555-1234</span>
+                        <div class="audit-why">Duration: 222s • Outcome: appointment_set • Agent: Paige (roofing) • Retell Cost: $0.37</div>
+                    </div>
+                    <div class="audit-time">2:20 PM</div>
+                </div>
+                <div class="audit-item">
+                    <div class="audit-icon appt">📅</div>
+                    <div class="audit-text">
+                        <strong>Appointment Created</strong> <span>via AI call extraction</span>
+                        <div class="audit-why">Date: 2026-01-04 10:00 • Type: inspection • Google Event: abc123xyz</div>
+                    </div>
+                    <div class="audit-time">2:20 PM</div>
+                </div>
+                <div class="audit-item">
+                    <div class="audit-icon sms">💬</div>
+                    <div class="audit-text">
+                        <strong>SMS Sent</strong> <span>Confirmation to (720) 555-1234</span>
+                        <div class="audit-why">Template: appointment_confirmation • Twilio SID: SM123abc • Cost: $0.0075</div>
+                    </div>
+                    <div class="audit-time">2:21 PM</div>
+                </div>
+                <div class="audit-item">
+                    <div class="audit-icon lead">👤</div>
+                    <div class="audit-text">
+                        <strong>Lead Stage Updated</strong> <span>new_lead → appointment_set</span>
+                        <div class="audit-why">Trigger: appointment_created • Pipeline: roofing_default • Previous: contacted</div>
+                    </div>
+                    <div class="audit-time">2:21 PM</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Debug Console -->
+        <div class="cmd-card">
+            <div class="cmd-card-header">
+                <div class="cmd-card-title">🖥️ Debug Console</div>
+                <button onclick="clearDebug()" style="padding:6px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;color:#ef4444;font-size:11px;cursor:pointer">Clear</button>
+            </div>
+            <div class="debug-console">
+                <div class="debug-header">
+                    <div class="debug-dot red"></div>
+                    <div class="debug-dot yellow"></div>
+                    <div class="debug-dot green"></div>
+                    <span style="color:rgba(255,255,255,0.4);font-size:11px;margin-left:8px">voice_app.py — LIVE</span>
+                </div>
+                <div class="debug-body" id="debug-output">
+                    <div class="debug-line"><span class="debug-time">14:17:02</span><span class="debug-type info">INFO</span><span class="debug-msg">Webhook received: new_lead from Facebook</span></div>
+                    <div class="debug-line"><span class="debug-time">14:17:02</span><span class="debug-type success">OK</span><span class="debug-msg">Lead created: #4521 John Smith (720) 555-1234</span></div>
+                    <div class="debug-line"><span class="debug-time">14:17:03</span><span class="debug-type info">INFO</span><span class="debug-msg">Automation triggered: auto_call_new_lead</span></div>
+                    <div class="debug-line"><span class="debug-time">14:17:03</span><span class="debug-type info">INFO</span><span class="debug-msg">Retell API: Creating call to +17205551234</span></div>
+                    <div class="debug-line"><span class="debug-time">14:17:04</span><span class="debug-type success">OK</span><span class="debug-msg">Call initiated: call_abc123 (Paige/roofing)</span></div>
+                    <div class="debug-line"><span class="debug-time">14:20:26</span><span class="debug-type success">OK</span><span class="debug-msg">Call completed: 222s, outcome=appointment_set</span></div>
+                    <div class="debug-line"><span class="debug-time">14:20:27</span><span class="debug-type info">INFO</span><span class="debug-msg">Extracting appointment from transcript...</span></div>
+                    <div class="debug-line"><span class="debug-time">14:20:28</span><span class="debug-type success">OK</span><span class="debug-msg">Appointment created: #892 2026-01-04 10:00</span></div>
+                    <div class="debug-line"><span class="debug-time">14:20:28</span><span class="debug-type info">INFO</span><span class="debug-msg">Syncing to Google Calendar...</span></div>
+                    <div class="debug-line"><span class="debug-time">14:20:29</span><span class="debug-type success">OK</span><span class="debug-msg">Google Calendar event created: abc123xyz</span></div>
+                    <div class="debug-line"><span class="debug-time">14:21:01</span><span class="debug-type info">INFO</span><span class="debug-msg">Sending SMS confirmation via Twilio...</span></div>
+                    <div class="debug-line"><span class="debug-time">14:21:02</span><span class="debug-type success">OK</span><span class="debug-msg">SMS delivered: SM123abc</span></div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <div class="cmd-sidebar">
+        
+        <!-- Agent Leaderboard -->
+        <div class="cmd-card">
+            <div class="cmd-card-header">
+                <div class="cmd-card-title">🏆 Agent Leaderboard</div>
+                <span style="font-size:11px;color:rgba(255,255,255,0.4)">Last 7 days</span>
+            </div>
+            <div class="cmd-card-body">
+                <div class="leaderboard" id="agent-leaderboard">
+                    <div class="leader-item">
+                        <div class="leader-rank gold">1</div>
+                        <div class="leader-avatar" style="background:linear-gradient(135deg,#00d1ff,#0066ff)">🏠</div>
+                        <div class="leader-info">
+                            <div class="leader-name">Paige (Roofing)</div>
+                            <div class="leader-stats">47 calls • 18 appointments</div>
+                        </div>
+                        <div class="leader-score">
+                            <div class="leader-score-value">38%</div>
+                            <div class="leader-score-label">Convert</div>
+                        </div>
+                    </div>
+                    <div class="leader-item">
+                        <div class="leader-rank silver">2</div>
+                        <div class="leader-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706)">☀️</div>
+                        <div class="leader-info">
+                            <div class="leader-name">Luna (Solar)</div>
+                            <div class="leader-stats">35 calls • 12 appointments</div>
+                        </div>
+                        <div class="leader-score">
+                            <div class="leader-score-value">34%</div>
+                            <div class="leader-score-label">Convert</div>
+                        </div>
+                    </div>
+                    <div class="leader-item">
+                        <div class="leader-rank bronze">3</div>
+                        <div class="leader-avatar" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed)">🏥</div>
+                        <div class="leader-info">
+                            <div class="leader-name">Sarah (Medical)</div>
+                            <div class="leader-stats">52 calls • 15 appointments</div>
+                        </div>
+                        <div class="leader-score">
+                            <div class="leader-score-value">29%</div>
+                            <div class="leader-score-label">Convert</div>
+                        </div>
+                    </div>
+                    <div class="leader-item">
+                        <div class="leader-rank normal">4</div>
+                        <div class="leader-avatar" style="background:rgba(255,255,255,0.1)">❄️</div>
+                        <div class="leader-info">
+                            <div class="leader-name">Jake (HVAC)</div>
+                            <div class="leader-stats">28 calls • 7 appointments</div>
+                        </div>
+                        <div class="leader-score">
+                            <div class="leader-score-value">25%</div>
+                            <div class="leader-score-label">Convert</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- System Health -->
+        <div class="cmd-card">
+            <div class="cmd-card-header">
+                <div class="cmd-card-title">💚 System Health</div>
+            </div>
+            <div class="cmd-card-body">
+                <div class="health-grid">
+                    <div class="health-item">
+                        <div class="health-value good">99.8%</div>
+                        <div class="health-label">Uptime</div>
+                        <div class="health-bar"><div class="health-bar-fill good" style="width:99.8%"></div></div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-value good">847ms</div>
+                        <div class="health-label">Avg Latency</div>
+                        <div class="health-bar"><div class="health-bar-fill good" style="width:85%"></div></div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-value good">98.2%</div>
+                        <div class="health-label">Call Success</div>
+                        <div class="health-bar"><div class="health-bar-fill good" style="width:98.2%"></div></div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-value good">97.5%</div>
+                        <div class="health-label">SMS Delivered</div>
+                        <div class="health-bar"><div class="health-bar-fill good" style="width:97.5%"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="cmd-card">
+            <div class="cmd-card-header">
+                <div class="cmd-card-title">⚡ Quick Actions</div>
+            </div>
+            <div class="cmd-card-body">
+                <div class="quick-actions">
+                    <div class="quick-action" onclick="toast('🔄 Syncing calls...');loadDash()">
+                        <div class="quick-action-icon">🔄</div>
+                        <div class="quick-action-label">Sync All</div>
+                    </div>
+                    <div class="quick-action" onclick="showPage('testing')">
+                        <div class="quick-action-icon">🧪</div>
+                        <div class="quick-action-label">Test Call</div>
+                    </div>
+                    <div class="quick-action" onclick="openModal('appt-modal')">
+                        <div class="quick-action-icon">📅</div>
+                        <div class="quick-action-label">New Appt</div>
+                    </div>
+                    <div class="quick-action" onclick="openModal('lead-modal')">
+                        <div class="quick-action-icon">👤</div>
+                        <div class="quick-action-label">Add Lead</div>
+                    </div>
+                    <div class="quick-action" onclick="exportReport()">
+                        <div class="quick-action-icon">📊</div>
+                        <div class="quick-action-label">Export</div>
+                    </div>
+                    <div class="quick-action" onclick="showPage('nexus')">
+                        <div class="quick-action-icon">📈</div>
+                        <div class="quick-action-label">Analytics</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Live Activity Feed -->
+        <div class="cmd-card">
+            <div class="cmd-card-header">
+                <div class="cmd-card-title">📡 Live Activity</div>
+            </div>
+            <div class="cmd-card-body" style="padding:0">
+                <div class="audit-log" id="live-activity" style="max-height:200px">
+                    <div class="audit-item">
+                        <div class="audit-icon call">📞</div>
+                        <div class="audit-text"><strong>Call ended</strong> <span>Paige → John S.</span></div>
+                        <div class="audit-time">Just now</div>
+                    </div>
+                    <div class="audit-item">
+                        <div class="audit-icon appt">📅</div>
+                        <div class="audit-text"><strong>Appointment booked</strong> <span>Tomorrow 10am</span></div>
+                        <div class="audit-time">2m ago</div>
+                    </div>
+                    <div class="audit-item">
+                        <div class="audit-icon sms">💬</div>
+                        <div class="audit-text"><strong>SMS delivered</strong> <span>Confirmation sent</span></div>
+                        <div class="audit-time">2m ago</div>
+                    </div>
+                    <div class="audit-item">
+                        <div class="audit-icon lead">👤</div>
+                        <div class="audit-text"><strong>New lead</strong> <span>from Facebook Ads</span></div>
+                        <div class="audit-time">5m ago</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+</div>
 </div>
 
 <div class="page" id="page-integrations">

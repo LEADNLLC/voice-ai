@@ -6631,7 +6631,8 @@ td{font-size:13px}
 @media(max-width:1024px){.stats-grid{grid-template-columns:repeat(2,1fr)}.grid-2{grid-template-columns:1fr}}
 @media(max-width:768px){.sidebar{transform:translateX(-100%)}.main{margin-left:0}.assistant-bar{left:0}}"""
 
-    js = """window.onerror=function(msg,url,line){console.error('JS Error:',msg,'at line',line);return false};
+    js = """console.log('VOICE JS Loading...');
+window.onerror=function(msg,url,line,col,error){console.error('JS Error:',msg,'at line',line,'col',col,error);return false};
 const $=id=>document.getElementById(id);
 const outbound=""" + out_json + """;
 const inbound=""" + in_json + """;
@@ -6651,9 +6652,50 @@ testPhone=settings.test_phone||'';
 if($('test-phone'))$('test-phone').value=testPhone;
 if($('app-mode'))$('app-mode').value=settings.mode||'testing';
 }catch(e){console.error('Init error:',e)}
-}init();
-document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));n.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const pg=$('page-'+n.dataset.page);if(pg)pg.classList.add('active');load(n.dataset.page)});
-function load(p){try{if(p==='dashboard')loadDash();else if(p==='calendar')loadVoiceCal();else if(p==='appointments')loadAppts();else if(p==='dispositions')loadDispo();else if(p==='outbound')loadOut();else if(p==='inbound')loadIn();else if(p==='leads')loadLeads();else if(p==='website-leads')loadWebsiteLeads();else if(p==='calls')loadCalls();else if(p==='costs')loadCosts();else if(p==='testing')loadTesting();else if(p==='ads')loadAds();else if(p==='pipeline')loadPipeline();else if(p==='integrations')loadIntegrations();else if(p==='account')loadAccount();else if(p==='evolution')loadEvolution();else if(p==='nexus')loadNexus();else if(p==='command')loadCommand()}catch(e){console.error('Load error:',p,e)}}
+}
+function setupNav(){
+console.log('Setting up navigation...');
+document.querySelectorAll('.nav-item').forEach(function(n){
+n.onclick=function(){
+try{
+console.log('Nav clicked:',n.dataset.page);
+document.querySelectorAll('.nav-item').forEach(function(x){x.classList.remove('active')});
+n.classList.add('active');
+document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active')});
+var pg=document.getElementById('page-'+n.dataset.page);
+if(pg){pg.classList.add('active');console.log('Page activated:',n.dataset.page)}
+else{console.error('Page not found:','page-'+n.dataset.page)}
+load(n.dataset.page);
+}catch(e){console.error('Nav error:',e)}
+};
+});
+console.log('Navigation setup complete');
+}
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){setupNav();init()})}
+else{setupNav();init()}
+function load(p){
+console.log('Loading page:',p);
+try{
+if(p==='dashboard')loadDash().catch(function(e){console.error('loadDash failed:',e)});
+else if(p==='calendar')loadVoiceCal().catch(function(e){console.error('loadVoiceCal failed:',e)});
+else if(p==='appointments')loadAppts().catch(function(e){console.error('loadAppts failed:',e)});
+else if(p==='dispositions')loadDispo().catch(function(e){console.error('loadDispo failed:',e)});
+else if(p==='outbound')loadOut();
+else if(p==='inbound')loadIn();
+else if(p==='leads')loadLeads().catch(function(e){console.error('loadLeads failed:',e)});
+else if(p==='website-leads')loadWebsiteLeads().catch(function(e){console.error('loadWebsiteLeads failed:',e)});
+else if(p==='calls')loadCalls().catch(function(e){console.error('loadCalls failed:',e)});
+else if(p==='costs')loadCosts().catch(function(e){console.error('loadCosts failed:',e)});
+else if(p==='testing')loadTesting().catch(function(e){console.error('loadTesting failed:',e)});
+else if(p==='ads')loadAds().catch(function(e){console.error('loadAds failed:',e)});
+else if(p==='pipeline')loadPipeline().catch(function(e){console.error('loadPipeline failed:',e)});
+else if(p==='integrations')loadIntegrations().catch(function(e){console.error('loadIntegrations failed:',e)});
+else if(p==='account')loadAccount().catch(function(e){console.error('loadAccount failed:',e)});
+else if(p==='evolution')loadEvolution().catch(function(e){console.error('loadEvolution failed:',e)});
+else if(p==='nexus')loadNexus().catch(function(e){console.error('loadNexus failed:',e)});
+else if(p==='command')loadCommand().catch(function(e){console.error('loadCommand failed:',e)});
+}catch(e){console.error('Load error:',p,e)}
+}
 function openModal(id){const el=$(id);if(el)el.classList.add('active')}function closeModal(id){const el=$(id);if(el)el.classList.remove('active')}function toast(msg,err=false){const t=$('toast');if(t){t.textContent=msg;t.className='toast show'+(err?' error':'');setTimeout(()=>t.classList.remove('show'),3000)}}
 function apptCard(a){const g=agents[a.agent_type]||{name:'Agent'};return `<div class="appt-card"><div class="appt-header"><div><div class="appt-name">${a.first_name||'Customer'}</div><div class="appt-phone">${a.phone||''}</div></div><span class="status status-${a.disposition||'scheduled'}">${a.disposition||'Scheduled'}</span></div><div class="appt-meta"><span>${a.appointment_date||'TBD'}</span><span>${a.appointment_time||''}</span><span>${g.name}</span></div><div class="appt-actions">${!a.disposition?`<button class="btn btn-sm btn-success" onclick="qDispo(${a.id},'sold')">Sold</button><button class="btn btn-sm btn-danger" onclick="qDispo(${a.id},'no-show')">No Show</button>`:''}<button class="btn btn-sm btn-secondary" onclick="editAppt(${a.id})">Edit</button></div></div>`}
 async function loadDash(){try{const s=await fetch('/api/appointment-stats').then(r=>r.json()).catch(()=>({}));if($('s-today'))$('s-today').textContent=s.today||0;if($('s-scheduled'))$('s-scheduled').textContent=s.scheduled||0;if($('s-sold'))$('s-sold').textContent=s.sold||0;if($('s-revenue'))$('s-revenue').textContent='$'+(s.revenue||0).toLocaleString();const today=new Date().toISOString().split('T')[0];const a=await fetch('/api/appointments?date='+today).then(r=>r.json()).catch(()=>[]);if($('today-list'))$('today-list').innerHTML=a.length?a.map(x=>apptCard(x)).join(''):'<p style="color:var(--gray-500);text-align:center;padding:40px">No appointments today</p>'}catch(e){console.error('loadDash error:',e)}}

@@ -12711,7 +12711,7 @@ Let's close some deals! 🚀"""
             try:
                 print(f"📥 GHL Webhook received: {d}")
                 
-                action = d.get('action', 'sequence')  # Default to sequence
+                action = d.get('action', 'call')  # Default to direct call
                 phone = d.get('phone', d.get('contact', {}).get('phone', ''))
                 contact_id = d.get('contact_id', d.get('contact', {}).get('id', ''))
                 first_name = d.get('first_name', d.get('contact', {}).get('firstName', 'there'))
@@ -12997,6 +12997,36 @@ Let's close some deals! 🚀"""
                 print(f"❌ Retell webhook error: {e}")
                 import traceback
                 traceback.print_exc()
+                self.send_json({"success": False, "error": str(e)})
+        
+        elif path == '/api/ghl/clear-sequence':
+            # Clear stuck sequences for a phone number
+            try:
+                phone = d.get('phone', '')
+                if not phone:
+                    self.send_json({"success": False, "error": "Phone required"})
+                    return
+                
+                phone = format_phone(phone)
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                
+                # Mark sequences as cleared
+                c.execute('UPDATE call_sequences SET status = ? WHERE phone = ? AND status = ?',
+                         ('cleared', phone, 'active'))
+                cleared = c.rowcount
+                
+                # Cancel pending scheduled calls
+                c.execute('''UPDATE scheduled_calls SET status = ? 
+                            WHERE sequence_id IN (SELECT id FROM call_sequences WHERE phone = ?) 
+                            AND status = ?''',
+                         ('cancelled', phone, 'pending'))
+                
+                conn.commit()
+                conn.close()
+                
+                self.send_json({"success": True, "cleared": cleared, "phone": phone})
+            except Exception as e:
                 self.send_json({"success": False, "error": str(e)})
         
         elif path == '/api/ghl/costs':

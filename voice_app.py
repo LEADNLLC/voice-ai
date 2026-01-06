@@ -13183,3 +13183,253 @@ def main():
 
 if __name__ == '__main__':
     main()
+"""
+=================================================================
+COPY THIS ENTIRE FILE INTO YOUR voice_app.py
+=================================================================
+
+WHAT IT DOES:
+1. Receives call results from Retell when calls end
+2. Adds tags to GHL contact (AI - Connected, AI - No Answer, etc.)
+3. Adds note with call transcript/summary
+4. Books appointment on GHL calendar when AI sets one
+
+SETUP STEPS:
+1. Add this code to voice_app.py (paste before if __name__ == "__main__")
+2. Add environment variable to Railway: GHL_LOCATION_ID = 1Kxb4wuQ087lYbcPdpNm
+3. In Retell Dashboard → Settings → Webhooks → Add: https://www.voicelab.live/webhook/retell
+
+=================================================================
+"""
+
+# Add these imports at top of voice_app.py if not already present:
+# from datetime import datetime, timedelta
+
+# =================================================================
+# RETELL WEBHOOK - Call Results Sync + Calendar Booking
+# =================================================================
+
+@app.route("/webhook/retell", methods=["POST"])
+def retell_webhook():
+    """
+    Receives Retell call events and syncs to GHL:
+    - Tags contact based on outcome
+    - Adds call notes with transcript
+    - Books calendar appointment if scheduled
+    """
+    
+    # GHL Config (uses your existing env vars)
+    GHL_API_KEY = os.environ.get("GHL_API_KEY")
+    GHL_CALENDAR_ID = os.environ.get("GHL_CALENDAR_ID")  # Your solar calendar
+    GHL_LOCATION_ID = os.environ.get("GHL_LOCATION_ID", "1Kxb4wuQ087lYbcPdpNm")
+    GHL_BASE_URL = "https://services.leadconnectorhq.com"
+    GHL_HEADERS = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json",
+        "Version": "2021-07-28"
+    }
+    
+    try:
+        payload = request.json
+        event = payload.get("event", "")
+        call_data = payload.get("call", {})
+        
+        print(f"\n[RETELL WEBHOOK] Event: {event}")
+        print(f"[RETELL WEBHOOK] Call ID: {call_data.get('call_id', 'N/A')}")
+        
+        # Only process when call ends
+        if event not in ["call_ended", "call_analyzed"]:
+            return jsonify({"status": "ignored", "event": event}), 200
+        
+        # ----- GET CONTACT ID -----
+        metadata = call_data.get("metadata", {})
+        contact_id = metadata.get("ghl_contact_id") or metadata.get("contact_id")
+        
+        # If no contact ID in metadata, look up by phone
+        if not contact_id:
+            phone = call_data.get("to_number")
+            if phone:
+                lookup = requests.get(
+                    f"{GHL_BASE_URL}/contacts/",
+                    headers=GHL_HEADERS,
+                    params={"locationId": GHL_LOCATION_ID, "phone": phone}
+                )
+                contacts = lookup.json().get("contacts", [])
+                if contacts:
+                    contact_id = contacts[0].get("id")
+        
+        if not contact_id:
+            print("[RETELL WEBHOOK] ⚠️ No contact found - cannot sync")
+            return jsonify({"status": "no_contact"}), 200
+        
+        # ----- ANALYZE CALL OUTCOME -----
+        status = call_data.get("call_status", "").lower()
+        duration = call_data.get("duration_seconds", 0) or call_data.get("call_duration_seconds", 0) or 0
+        transcript = call_data.get("transcript", "")
+        recording_url = call_data.get("recording_url", "")
+        
+        # Check if appointment was booked
+        booking_phrases = [
+            "appointment is confirmed", "scheduled for", "booked for",
+            "see you on", "appointment set", "you're all set for",
+            "i've got you down for", "looking forward to meeting"
+        ]
+        booked = any(phrase in transcript.lower() for phrase in booking_phrases)
+        
+        # Determine tag based on outcome
+        if status in ["no-answer", "no_answer"]:
+            tag = "AI - No Answer"
+            outcome = "No Answer"
+        elif status == "voicemail":
+            tag = "AI - Voicemail"
+            outcome = "Voicemail"
+        elif status == "busy":
+            tag = "AI - Busy"
+            outcome = "Busy"
+        elif status == "failed":
+            tag = "AI - Failed"
+            outcome = "Failed"
+        elif booked:
+            tag = "AI - Appointment Set"
+            outcome = "Appointment Set"
+        elif duration > 60:
+            tag = "AI - Connected"
+            outcome = "Connected"
+        elif duration > 0:
+            tag = "AI - Short Call"
+            outcome = "Short Call"
+        else:
+            tag = "AI - Other"
+            outcome = "Other"
+        
+        print(f"[RETELL WEBHOOK] Outcome: {outcome} | Duration: {duration}s | Booked: {booked}")
+        
+        # ----- UPDATE GHL CONTACT -----
+        
+        # Get existing tags
+        contact_resp = requests.get(f"{GHL_BASE_URL}/contacts/{contact_id}", headers=GHL_HEADERS)
+        contact_data = contact_resp.json().get("contact", {})
+        existing_tags = contact_data.get("tags", [])
+        contact_name = f"{contact_data.get('firstName', '')} {contact_data.get('lastName', '')}".strip()
+        
+        # Build new tag list
+        new_tags = list(set(existing_tags + [tag]))
+        if booked:
+            new_tags = list(set(new_tags + ["Appointment Set", "Hot Lead"]))
+        
+        # Remove old AI call tags (keep only latest)
+        old_ai_tags = ["AI - No Answer", "AI - Voicemail", "AI - Busy", "AI - Connected", 
+                       "AI - Short Call", "AI - Failed", "AI - Other"]
+        new_tags = [t for t in new_tags if t not in old_ai_tags or t == tag]
+        
+        # Update tags
+        requests.put(
+            f"{GHL_BASE_URL}/contacts/{contact_id}",
+            headers=GHL_HEADERS,
+            json={"tags": new_tags}
+        )
+        
+        # ----- ADD NOTE -----
+        note_lines = [
+            f"📞 AI Call Result: {outcome}",
+            f"⏱️ Duration: {duration // 60}m {duration % 60}s",
+            f"🆔 Call ID: {call_data.get('call_id', 'N/A')}",
+            ""
+        ]
+        
+        if booked:
+            note_lines.insert(1, "✅ APPOINTMENT BOOKED!")
+        
+        if recording_url:
+            note_lines.append(f"🎧 Recording: {recording_url}")
+            note_lines.append("")
+        
+        if transcript:
+            # Truncate long transcripts
+            clean_transcript = transcript[:600] + "..." if len(transcript) > 600 else transcript
+            note_lines.append(f"📝 Transcript:\n{clean_transcript}")
+        
+        note = "\n".join(note_lines)
+        
+        requests.post(
+            f"{GHL_BASE_URL}/contacts/{contact_id}/notes",
+            headers=GHL_HEADERS,
+            json={"body": note}
+        )
+        
+        # ----- BOOK CALENDAR IF APPOINTMENT SET -----
+        if booked and GHL_CALENDAR_ID:
+            # Try to extract appointment time from Retell function calls
+            appt_time = None
+            
+            for fc in call_data.get("function_calls", []):
+                func_name = fc.get("name", "").lower()
+                if "book" in func_name or "schedule" in func_name or "appointment" in func_name:
+                    args = fc.get("arguments", {})
+                    appt_time = (
+                        args.get("datetime") or 
+                        args.get("start_time") or 
+                        args.get("time") or
+                        args.get("appointment_time") or
+                        args.get("slot")
+                    )
+                    if appt_time:
+                        break
+            
+            if appt_time:
+                try:
+                    # Parse and create end time (30 min appointment)
+                    if isinstance(appt_time, str):
+                        start_dt = datetime.fromisoformat(appt_time.replace('Z', '+00:00'))
+                    else:
+                        start_dt = appt_time
+                    
+                    end_dt = start_dt + timedelta(minutes=30)
+                    
+                    # Book the appointment
+                    appt_payload = {
+                        "calendarId": GHL_CALENDAR_ID,
+                        "contactId": contact_id,
+                        "startTime": start_dt.isoformat(),
+                        "endTime": end_dt.isoformat(),
+                        "title": f"Solar Consultation - {contact_name or 'New Lead'}",
+                        "appointmentStatus": "confirmed",
+                        "notes": f"Booked via AI call\nCall ID: {call_data.get('call_id')}"
+                    }
+                    
+                    appt_resp = requests.post(
+                        f"{GHL_BASE_URL}/calendars/{GHL_CALENDAR_ID}/appointments",
+                        headers=GHL_HEADERS,
+                        json=appt_payload
+                    )
+                    
+                    if appt_resp.status_code in [200, 201]:
+                        print(f"[RETELL WEBHOOK] ✅ Calendar booked: {start_dt}")
+                    else:
+                        print(f"[RETELL WEBHOOK] ❌ Calendar failed: {appt_resp.text}")
+                        
+                except Exception as cal_err:
+                    print(f"[RETELL WEBHOOK] ❌ Calendar error: {cal_err}")
+            else:
+                print("[RETELL WEBHOOK] ⚠️ Appointment booked but couldn't extract time")
+        
+        print(f"[RETELL WEBHOOK] ✅ Synced: {contact_id} → {tag}")
+        
+        return jsonify({
+            "status": "synced",
+            "contact_id": contact_id,
+            "outcome": outcome,
+            "tag": tag,
+            "booked": booked
+        }), 200
+        
+    except Exception as e:
+        print(f"[RETELL WEBHOOK] ❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# =================================================================
+# END OF RETELL WEBHOOK CODE
+# =================================================================

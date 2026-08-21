@@ -187,6 +187,9 @@ COMPANY_PHONE = os.environ.get('COMPANY_PHONE', '')
 # Owner notification settings
 OWNER_EMAIL = os.environ.get('OWNER_EMAIL', 'john.soderberg86@gmail.com')
 OWNER_PHONE = os.environ.get('OWNER_PHONE', '+17023240525')
+# Where the "appointment set" text goes. Separate from OWNER_PHONE so changing the
+# appointment alert destination doesn't silently re-route every other owner alert.
+APPT_ALERT_PHONE = os.environ.get('APPT_ALERT_PHONE', '+17026721251')
 CALENDLY_LINK = os.environ.get('CALENDLY_LINK', 'https://calendly.com/voicelab/demo')
 
 COST_PER_MINUTE_VAPI = 0.05
@@ -196,16 +199,17 @@ COST_PER_SMS = 0.0075
 # ═══════════════════════════════════════════════════════════════════════════════
 # 📱 DIRECT SMS ALERTS (for owner notifications - bypasses chat agent)
 # ═══════════════════════════════════════════════════════════════════════════════
-def send_owner_alert(message):
+def send_owner_alert(message, to=None):
     """Send direct SMS alert to owner via Retell (simple, no chat agent needed)"""
-    if not OWNER_PHONE:
+    to = to or OWNER_PHONE
+    if not to:
         print(f"⚠️ OWNER_PHONE not set, cannot send alert")
         return {'success': False, 'error': 'OWNER_PHONE not configured'}
-    
+
     print(f"📱🚨 SENDING OWNER ALERT")
-    print(f"   To: {OWNER_PHONE}")
+    print(f"   To: {to}")
     print(f"   Message: {message}")
-    
+
     try:
         # Use Retell's simple SMS endpoint
         response = requests.post(
@@ -216,7 +220,7 @@ def send_owner_alert(message):
             },
             json={
                 "from_number": HAILEY_PHONE_NUMBER,
-                "to_number": OWNER_PHONE,
+                "to_number": to,
                 "retell_llm_dynamic_variables": {
                     "alert_message": message,
                     "is_owner_alert": "true"
@@ -234,29 +238,105 @@ def send_owner_alert(message):
             return {'success': True}
         else:
             # Fallback: Try Twilio if Retell fails
-            print(f"⚠️ Retell alert failed, trying Twilio...")
-            return send_twilio_alert(message)
-            
+            print(f"⚠️ Retell alert failed ({response.status_code}: {response.text[:200]}), trying Twilio...")
+            return send_twilio_alert(message, to=to)
+
     except Exception as e:
         print(f"❌ Owner alert error: {e}")
         return {'success': False, 'error': str(e)}
 
-def send_twilio_alert(message):
+
+def notify_owner_appointment(first_name='', phone='', appt_when='', address='',
+                             agent_type='', recording_url='', call_id='', notes=''):
+    """Text the owner the moment an appointment is set.
+
+    Tries every channel rather than trusting one: Retell SMS is currently blocked by
+    A2P registration and Twilio needs credentials, so a single-channel notifier would
+    silently drop the alert. Email is the last resort but it always lands.
+    """
+    lines = ["🎉 APPOINTMENT SET"]
+    if first_name:
+        lines.append(f"Name: {first_name}")
+    if phone:
+        lines.append(f"Phone: {phone}")
+    if appt_when:
+        lines.append(f"When: {appt_when}")
+    if address:
+        lines.append(f"Address: {address}")
+    if agent_type:
+        lines.append(f"Agent: {agent_type}")
+    if notes:
+        lines.append(notes)
+    if recording_url:
+        lines.append(f"Recording: {recording_url}")
+    if call_id:
+        lines.append(f"Call: {call_id}")
+    message = "\n".join(lines)
+
+    target = APPT_ALERT_PHONE or OWNER_PHONE
+    print(f"\n📣 APPOINTMENT ALERT -> {target}")
+    print(message)
+
+    delivered_via = None
+
+    # 1) Retell SMS (same number Hailey texts from)
+    try:
+        r = send_owner_alert(message, to=target)
+        if r.get('success'):
+            delivered_via = 'retell'
+    except Exception as e:
+        print(f"⚠️ Retell owner alert error: {e}")
+
+    # 2) Twilio direct
+    if not delivered_via:
+        try:
+            r = send_twilio_alert(message, to=target)
+            if isinstance(r, dict) and r.get('success'):
+                delivered_via = 'twilio'
+        except Exception as e:
+            print(f"⚠️ Twilio owner alert error: {e}")
+
+    # 3) Email, so the alert is never silently lost
+    if not delivered_via and OWNER_EMAIL:
+        try:
+            subject = f"Appointment set: {first_name or 'New lead'}{' - ' + appt_when if appt_when else ''}"
+            if send_email(OWNER_EMAIL, subject, message):
+                delivered_via = 'email'
+        except Exception as e:
+            print(f"⚠️ Email owner alert error: {e}")
+
+    if delivered_via:
+        print(f"📣 ✅ Appointment alert delivered via {delivered_via}")
+    else:
+        print(f"📣 🚨 APPOINTMENT ALERT NOT DELIVERED on any channel. Details above.")
+    return {'success': bool(delivered_via), 'via': delivered_via, 'message': message}
+
+def send_twilio_alert(message, to=None):
     """Fallback: Send SMS via Twilio directly"""
     try:
-        twilio_sid = os.environ.get('YOUR_TWILIO_SID', YOUR_TWILIO_SID)
-        twilio_auth = os.environ.get('YOUR_TWILIO_AUTH', YOUR_TWILIO_AUTH)
-        
+        # Accept either credential pair - the app carries both names.
+        twilio_sid = (os.environ.get('YOUR_TWILIO_SID') or YOUR_TWILIO_SID
+                      or os.environ.get('TWILIO_SID') or TWILIO_SID)
+        twilio_auth = (os.environ.get('YOUR_TWILIO_AUTH') or YOUR_TWILIO_AUTH
+                       or os.environ.get('TWILIO_TOKEN') or TWILIO_TOKEN)
+
         if not twilio_sid or not twilio_auth:
             print(f"⚠️ Twilio credentials not configured")
             return {'success': False, 'error': 'Twilio not configured'}
-        
+
+        # From MUST be a number Twilio owns. HAILEY_PHONE_NUMBER is a RETELL number,
+        # so sending from it through Twilio's API fails with a 21606 every time.
+        twilio_from = os.environ.get('TWILIO_PHONE', TWILIO_PHONE)
+        if not twilio_from:
+            print(f"⚠️ TWILIO_PHONE not set - cannot send via Twilio")
+            return {'success': False, 'error': 'TWILIO_PHONE not configured'}
+
         response = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json",
             auth=(twilio_sid, twilio_auth),
             data={
-                "From": HAILEY_PHONE_NUMBER,
-                "To": OWNER_PHONE,
+                "From": twilio_from,
+                "To": to or OWNER_PHONE,
                 "Body": message
             },
             timeout=15
@@ -287,13 +367,21 @@ GHL_CALENDAR_ID = os.environ.get('GHL_CALENDAR_ID', 'wUUB0CNuZKlAy0NyYbmn')  # f
 # Book onto the calendar with THIS NAME. Resolved to an ID at runtime via the GHL API,
 # so you never have to hunt for the ID. Matching is case-insensitive and ignores spaces.
 # If the name can't be resolved, GHL_CALENDAR_ID above is used as the fallback.
-GHL_CALENDAR_NAME = os.environ.get('GHL_CALENDAR_NAME', 'Illinois Virtual')
+GHL_CALENDAR_NAME = os.environ.get('GHL_CALENDAR_NAME', 'ILLINOIS - VIRTUAL')
 # IANA timezone the times Hailey SPEAKS are in. Leads are Denver, so appointment times
 # are the homeowner's local Mountain time. GHL converts for display on the Illinois
 # calendar - it stores an absolute instant, so the offset written here is what matters.
 # This drives the UTC offset written on the appointment - see ghl_create_appointment().
 GHL_TIMEZONE = os.environ.get('GHL_TIMEZONE', 'America/Denver')
-GHL_PIPELINE_ID = os.environ.get('GHL_PIPELINE_ID', '1Kxb4wuQ087lYbcPdpNm')  # Solar Leads Client pipeline
+# NOTE: this default was the LOCATION id, not a pipeline id. The real pipeline seen in
+# production logs is QcJSeWfA1T1xjAIP8SE4. Prefer GHL_PIPELINE_NAME below, which is
+# resolved by name at runtime and does not depend on this being right.
+GHL_PIPELINE_ID = os.environ.get('GHL_PIPELINE_ID', 'QcJSeWfA1T1xjAIP8SE4')  # Solar Leads Client pipeline
+# Pipeline + stage to move a contact into once Hailey books. Resolved BY NAME, so
+# capitalization and punctuation in GHL don't matter. Leave GHL_PIPELINE_NAME empty
+# to search every pipeline for the stage.
+GHL_PIPELINE_NAME = os.environ.get('GHL_PIPELINE_NAME', '')
+GHL_APPT_STAGE_NAME = os.environ.get('GHL_APPT_STAGE_NAME', 'Appointment Set')
 
 # Custom Field IDs for AI call tracking
 GHL_FIELD_CALL_ATTEMPTS = 'FLb7X9bW9EXp9JoLPPss'
@@ -3407,6 +3495,18 @@ def ghl_get_pipelines():
     return ghl_request('GET', '/opportunities/pipelines', params={'locationId': GHL_LOCATION_ID})
 
 _CALENDAR_ID_CACHE = {}
+_PIPELINE_CACHE = {}
+
+
+def ghl_name_key(s):
+    """Normalize a GHL object name for matching.
+
+    Strips EVERYTHING that is not a letter or digit. GHL names carry punctuation and
+    casing nobody types consistently: the real calendar is "ILLINOIS - VIRTUAL" and
+    the config says "Illinois Virtual". Stripping only spaces leaves the hyphen behind
+    and the match silently fails, which sends bookings to the fallback calendar.
+    """
+    return re.sub(r'[^a-z0-9]', '', (s or '').lower())
 
 
 def ghl_resolve_calendar_id(name=None, refresh=False):
@@ -3419,7 +3519,7 @@ def ghl_resolve_calendar_id(name=None, refresh=False):
     if not name:
         return GHL_CALENDAR_ID
 
-    key = name.lower().replace(' ', '')
+    key = ghl_name_key(name)
     if not refresh and key in _CALENDAR_ID_CACHE:
         return _CALENDAR_ID_CACHE[key]
 
@@ -3431,11 +3531,11 @@ def ghl_resolve_calendar_id(name=None, refresh=False):
         return GHL_CALENDAR_ID
 
     # exact (normalized) match first, then a contains match
-    normalized = {(c.get('name') or '').lower().replace(' ', ''): c for c in calendars}
+    normalized = {ghl_name_key(c.get('name')): c for c in calendars}
     match = normalized.get(key)
     if not match:
         for cal_key, cal in normalized.items():
-            if key in cal_key or cal_key in key:
+            if key and cal_key and (key in cal_key or cal_key in key):
                 match = cal
                 break
 
@@ -3448,6 +3548,115 @@ def ghl_resolve_calendar_id(name=None, refresh=False):
     print(f"🚨 No GHL calendar named '{name}'. Available: {available}")
     print(f"🚨 Falling back to GHL_CALENDAR_ID={GHL_CALENDAR_ID} - appointments may land on the wrong calendar.")
     return GHL_CALENDAR_ID
+
+
+def ghl_resolve_stage(stage_name=None, pipeline_name=None, refresh=False):
+    """Resolve a pipeline + stage NAME to their ids.
+
+    Returns (pipeline_id, stage_id), or (None, None) if it can't be matched.
+    Names are matched with ghl_name_key, so "Appointment Set", "APPOINTMENT SET"
+    and "Appointment-Set" all resolve to the same stage.
+    """
+    stage_name = (stage_name or GHL_APPT_STAGE_NAME or '').strip()
+    pipeline_name = (pipeline_name or GHL_PIPELINE_NAME or '').strip()
+    if not stage_name:
+        return (None, None)
+
+    cache_key = (ghl_name_key(pipeline_name), ghl_name_key(stage_name))
+    if not refresh and cache_key in _PIPELINE_CACHE:
+        return _PIPELINE_CACHE[cache_key]
+
+    resp = ghl_get_pipelines()
+    pipelines = (resp or {}).get('pipelines', []) if isinstance(resp, dict) else []
+    if not pipelines:
+        print(f"⚠️ Could not list GHL pipelines ({resp if isinstance(resp, dict) else ''})")
+        return (None, None)
+
+    # Narrow to the named pipeline when one is configured, else search them all.
+    candidates = pipelines
+    if pipeline_name:
+        pkey = ghl_name_key(pipeline_name)
+        narrowed = [p for p in pipelines
+                    if pkey == ghl_name_key(p.get('name')) or pkey in ghl_name_key(p.get('name'))]
+        if narrowed:
+            candidates = narrowed
+        else:
+            print(f"⚠️ No pipeline named '{pipeline_name}'; searching all pipelines for "
+                  f"stage '{stage_name}'. Available: "
+                  + ', '.join(f'"{p.get("name")}"' for p in pipelines))
+
+    skey = ghl_name_key(stage_name)
+    for p in candidates:
+        for st in p.get('stages', []) or []:
+            st_key = ghl_name_key(st.get('name'))
+            if st_key == skey or (skey and st_key and (skey in st_key or st_key in skey)):
+                found = (p.get('id'), st.get('id'))
+                _PIPELINE_CACHE[cache_key] = found
+                print(f"📊 Stage '{stage_name}' resolved to {found[1]} "
+                      f"(\"{st.get('name')}\" in pipeline \"{p.get('name')}\")")
+                return found
+
+    all_stages = ', '.join(
+        f'"{p.get("name")}: {st.get("name")}"'
+        for p in candidates for st in (p.get('stages') or [])
+    )
+    print(f"🚨 No pipeline stage named '{stage_name}'. Available: {all_stages or '(none)'}")
+    return (None, None)
+
+
+def ghl_move_to_stage(contact_id, stage_name=None, pipeline_name=None, monetary_value=None):
+    """Move this contact's opportunity into the named stage.
+
+    Creates the opportunity if the contact doesn't have one yet, so a booking is never
+    lost just because the lead skipped the normal intake path. Safe to call twice.
+    """
+    if not contact_id:
+        return {"success": False, "error": "no contact_id"}
+
+    pipeline_id, stage_id = ghl_resolve_stage(stage_name, pipeline_name)
+    if not stage_id:
+        return {"success": False, "error": f"stage '{stage_name or GHL_APPT_STAGE_NAME}' not found"}
+
+    search = ghl_get_opportunities(contact_id=contact_id)
+    opps = (search or {}).get('opportunities', []) if isinstance(search, dict) else []
+
+    # Prefer an open opportunity already in the target pipeline
+    target = None
+    for o in opps:
+        if o.get('pipelineId') == pipeline_id and o.get('status') == 'open':
+            target = o
+            break
+    if not target and opps:
+        target = opps[0]
+
+    if target:
+        if target.get('pipelineStageId') == stage_id:
+            print(f"📊 Opportunity {target.get('id')} is already in the target stage")
+            return {"success": True, "opportunity_id": target.get('id'), "unchanged": True}
+
+        updates = {'pipelineId': pipeline_id, 'pipelineStageId': stage_id, 'status': 'open'}
+        if monetary_value is not None:
+            updates['monetaryValue'] = monetary_value
+        result = ghl_update_opportunity(target['id'], updates)
+        if isinstance(result, dict) and result.get('error'):
+            print(f"🚨 Stage move failed for {target['id']}: {result}")
+            return {"success": False, "error": result.get('error')}
+        print(f"📊 ✅ Moved opportunity {target['id']} -> '{stage_name or GHL_APPT_STAGE_NAME}'")
+        return {"success": True, "opportunity_id": target['id']}
+
+    # No opportunity yet - create one directly in the target stage
+    contact = ghl_get_contact(contact_id)
+    name = (contact.get('name')
+            or f"{contact.get('firstName', '')} {contact.get('lastName', '')}".strip()
+            or 'New Lead')
+    result = ghl_create_opportunity(contact_id, pipeline_id, stage_id, name,
+                                    monetary_value or 0)
+    opp_id = (result or {}).get('opportunity', {}).get('id') if isinstance(result, dict) else None
+    if opp_id:
+        print(f"📊 ✅ Created opportunity {opp_id} directly in '{stage_name or GHL_APPT_STAGE_NAME}'")
+        return {"success": True, "opportunity_id": opp_id, "created": True}
+    print(f"🚨 Could not create opportunity for {contact_id}: {result}")
+    return {"success": False, "error": "create failed"}
 
 
 def _tz_offset(dt_str):
@@ -3753,6 +3962,22 @@ def ghl_sync_appointment_to_ghl(appointment):
             if result.get('id') or result.get('event'):
                 # Add "Appointment Set" tag - THIS TRIGGERS THE NOTIFICATION WORKFLOW!
                 ghl_add_tag(contact_id, 'Appointment Set')
+
+                # Move the opportunity into the Appointment Set stage. The tag alone
+                # does not move the pipeline card.
+                ghl_move_to_stage(contact_id)
+
+                # Text the owner the details
+                try:
+                    notify_owner_appointment(
+                        first_name=appointment.get('first_name', ''),
+                        phone=phone,
+                        appt_when=f"{appt_date} at {appt_time}",
+                        address=appointment.get('address', ''),
+                        agent_type=appointment.get('agent_type', ''),
+                    )
+                except Exception as alert_err:
+                    print(f"⚠️ Owner appointment alert failed: {alert_err}")
                 
                 # Also add note to contact
                 ghl_create_note(contact_id, f"🎉 APPOINTMENT BOOKED!\n📅 Date: {appt_date}\n⏰ Time: {appt_time}\n📍 Address: {appointment.get('address', 'TBD')}\n🤖 Booked by: Hailey AI")
@@ -18851,6 +19076,27 @@ def retell_webhook():
                             print(f"[RETELL WEBHOOK] 🎧 Recording attached: {recording_url}")
                     else:
                         print(f"[RETELL WEBHOOK] ❌ Calendar failed ({appt_resp.status_code}): {appt_resp.text}")
+
+                    # Move the pipeline card regardless of whether the calendar write
+                    # succeeded - the appointment was set, and a booked lead sitting in
+                    # the intake stage is worse than a missing calendar entry.
+                    try:
+                        ghl_move_to_stage(contact_id)
+                    except Exception as stage_err:
+                        print(f"[RETELL WEBHOOK] ❌ Stage move error: {stage_err}")
+
+                    # Text the owner. This is the path where the recording exists.
+                    try:
+                        notify_owner_appointment(
+                            first_name=contact_name or '',
+                            phone=call_data.get('to_number', ''),
+                            appt_when=start_iso,
+                            agent_type=call_data.get('agent_type', ''),
+                            recording_url=recording_url,
+                            call_id=call_data.get('call_id', ''),
+                        )
+                    except Exception as alert_err:
+                        print(f"[RETELL WEBHOOK] ❌ Owner alert error: {alert_err}")
                         
                 except Exception as cal_err:
                     print(f"[RETELL WEBHOOK] ❌ Calendar error: {cal_err}")

@@ -1,7 +1,7 @@
 From 78a61824389b5b6d175bb04cd27ae4407690f40a Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:19:00 +0000
-Subject: [PATCH 1/2] Route solar to new Retell agent, move outbound to
+Subject: [PATCH 1/3] Route solar to new Retell agent, move outbound to
  +17027105676, remove committed secrets
 
 ---
@@ -323,7 +323,7 @@ index 1ea393b..497b657 100644
 From c07ec35ae2728d1f59312031fa2feaf54fbc9fa5 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:31:05 +0000
-Subject: [PATCH 2/2] Remove solar->roofing webhook override, normalize
+Subject: [PATCH 2/3] Remove solar->roofing webhook override, normalize
  agent_type casing, loud unknown-agent fallback
 
 ---
@@ -368,6 +368,171 @@ index 497b657..dfec52f 100644
                  print(f"📥 Parsed: contact_id={contact_id}, phone={phone}, first_name={first_name}, address={address}")
                  
                  if not phone:
+-- 
+2.43.0
+
+
+From e3199bed8e2fad32b47494635c8073b88384389b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 20:52:38 +0000
+Subject: [PATCH 3/3] Pull address/state/phone from GHL contact record; scrub
+ unresolved merge fields
+
+---
+ voice_app.py | 126 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 126 insertions(+)
+
+diff --git a/voice_app.py b/voice_app.py
+index dfec52f..3f0a898 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -3256,6 +3256,76 @@ def ghl_get_contacts(limit=100, query=None, startAfterId=None):
+         params['startAfterId'] = startAfterId
+     return ghl_request('GET', '/contacts/', params=params)
+ 
++def clean_ghl_value(value):
++    """Normalize a GHL merge-field value to '' when it didn't actually resolve.
++
++    An unresolved GHL merge field arrives as the literal STRING 'undefined' (or
++    'null'/'None'), not as an empty value. Treating those as real data is how
++    Hailey ends up saying "your place at undefined".
++    """
++    if value is None:
++        return ''
++    s = str(value).strip()
++    if s.lower() in ('undefined', 'null', 'none', 'n/a', 'na', '{{contact.address1}}'):
++        return ''
++    # Any leftover unrendered merge field, e.g. '{{contact.address1}}'
++    if s.startswith('{{') and s.endswith('}}'):
++        return ''
++    return s
++
++
++def ghl_get_contact(contact_id):
++    """Fetch a single contact by ID. Returns the contact dict, or {} on failure."""
++    if not contact_id:
++        return {}
++    resp = ghl_request('GET', f'/contacts/{contact_id}')
++    if not isinstance(resp, dict) or resp.get('error'):
++        print(f"⚠️ GHL contact fetch failed for {contact_id}: {resp.get('error') if isinstance(resp, dict) else resp}")
++        return {}
++    # GHL v2 nests the record under a 'contact' key
++    return resp.get('contact', resp) or {}
++
++
++def ghl_fetch_contact_details(contact_id):
++    """Pull address/phone/name straight from GHL as the source of truth.
++
++    The webhook payload is only as good as the merge fields in the workflow. This
++    reads the contact record itself, so Hailey has the address without asking and
++    without depending on GHL templating.
++
++    Returns a normalized dict; missing values are '' (never 'undefined').
++    """
++    c = ghl_get_contact(contact_id)
++    if not c:
++        return {}
++
++    street = clean_ghl_value(c.get('address1') or c.get('address'))
++    city = clean_ghl_value(c.get('city'))
++    state = clean_ghl_value(c.get('state'))
++    postal = clean_ghl_value(c.get('postalCode') or c.get('postal_code'))
++
++    # Build a natural spoken address. Street alone is what Hailey should say;
++    # the full version is kept for notes and dynamic variables.
++    parts = [p for p in (street, city, state) if p]
++    full = ', '.join(parts)
++    if postal and full:
++        full = f"{full} {postal}"
++
++    details = {
++        'first_name': clean_ghl_value(c.get('firstName')),
++        'last_name': clean_ghl_value(c.get('lastName')),
++        'email': clean_ghl_value(c.get('email')),
++        'phone': clean_ghl_value(c.get('phone')),
++        'address': street,
++        'city': city,
++        'state': state,
++        'postal_code': postal,
++        'full_address': full,
++    }
++    print(f"📇 GHL contact {contact_id}: address='{street}' city='{city}' state='{state}' phone='{details['phone']}'")
++    return details
++
++
+ def ghl_create_contact(first_name, phone, email=None, last_name=None, tags=None, custom_fields=None, source='VoiceLab'):
+     """Create a contact in GoHighLevel"""
+     data = {
+@@ -5684,6 +5754,14 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
+             "address": address,
+             "customer_name": name,
+             "customer_address": address,
++            # The lead's own number, so the agent never has to ask for a callback
++            # number or read one back. Already known - it's who we're dialing.
++            "phone": phone,
++            "customer_phone": phone,
++            # True when we actually have an address. Use this in the Retell prompt to
++            # gate the confirm-the-address line instead of asking for it:
++            #   {{has_address}} == "yes"  ->  "...the property at {{address}}, right?"
++            "has_address": "yes" if address else "no",
+             "call_type": call_type,
+             "call_purpose": call_purpose,
+             "greeting_style": greeting_style,
+@@ -17308,6 +17386,54 @@ Let's close some deals! 🚀"""
+                 # reinstate it - it silently overrode whatever GHL sent.
+                 print(f"\U0001F4E5 agent_type resolved: '{agent_type}'")
+ 
++                # customData carries the workflow's merge fields - prefer them over the
++                # top-level payload, but scrub unresolved ones ('undefined', '{{...}}').
++                for _key, _target in (('address', 'address'), ('city', 'city'),
++                                      ('state', 'state'), ('email', 'email'),
++                                      ('last_name', 'last_name'), ('first_name', 'first_name')):
++                    _v = clean_ghl_value(_cd.get(_key))
++                    if _v:
++                        if _target == 'address':
++                            address = _v
++                        elif _target == 'city':
++                            city = _v
++                        elif _target == 'state':
++                            state = _v
++                        elif _target == 'email':
++                            email = _v
++                        elif _target == 'last_name':
++                            last_name = _v
++                        elif _target == 'first_name':
++                            first_name = _v
++
++                address = clean_ghl_value(address)
++                city = clean_ghl_value(city)
++                state = clean_ghl_value(state)
++
++                # A state that just echoes the agent type is a mis-mapped merge field,
++                # not a real state. Drop it so the GHL lookup below can supply the truth.
++                if state and state.lower() in ('solar', 'roofing', agent_type):
++                    print(f"⚠️ state='{state}' looks like the agent type, not a state - ignoring it")
++                    state = ''
++
++                # ── Pull the real record from GHL ──────────────────────────────
++                # Hailey should already know the address; she must never ask for it.
++                # The webhook payload depends on workflow merge fields that silently
++                # fail, so treat the contact record as the source of truth.
++                if contact_id and (not address or not state or not phone):
++                    _ghl = ghl_fetch_contact_details(contact_id)
++                    if _ghl:
++                        address = address or _ghl.get('address', '')
++                        city = city or _ghl.get('city', '')
++                        state = state or _ghl.get('state', '')
++                        phone = phone or _ghl.get('phone', '')
++                        email = email or _ghl.get('email', '')
++                        if (not first_name or first_name == 'there') and _ghl.get('first_name'):
++                            first_name = _ghl['first_name']
++                        last_name = last_name or _ghl.get('last_name', '')
++                    if not address:
++                        print(f"⚠️ No address on GHL contact {contact_id} either - "
++                              f"Hailey will use the no-address opener.")
+ 
+                 print(f"📥 Parsed: contact_id={contact_id}, phone={phone}, first_name={first_name}, address={address}")
+                 
 -- 
 2.43.0
 

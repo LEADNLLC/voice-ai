@@ -1,0 +1,321 @@
+From 78a61824389b5b6d175bb04cd27ae4407690f40a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 20:19:00 +0000
+Subject: [PATCH] Route solar to new Retell agent, move outbound to
+ +17027105676, remove committed secrets
+
+---
+ gitignore => .gitignore |  5 +++
+ env.example             | 20 +++++++++
+ voice_app.py            | 99 ++++++++++++++++++++++++-----------------
+ 3 files changed, 84 insertions(+), 40 deletions(-)
+ rename gitignore => .gitignore (81%)
+
+diff --git a/gitignore b/.gitignore
+similarity index 81%
+rename from gitignore
+rename to .gitignore
+index 14d2712..d5cea9c 100644
+--- a/gitignore
++++ b/.gitignore
+@@ -23,3 +23,8 @@ ENV/
+ # OS
+ .DS_Store
+ Thumbs.db
++
++# Secrets / local config
++.env.*
++*.pem
++*.key
+diff --git a/env.example b/env.example
+index 44cfd69..f94ede7 100644
+--- a/env.example
++++ b/env.example
+@@ -1,6 +1,26 @@
+ # VOICE Configuration
+ # Copy this to .env and fill in your values
+ # Or set these in Railway dashboard: Settings → Variables
++#
++# ⚠️ REQUIRED - the app will not place calls without these.
++# They no longer have hardcoded fallbacks in voice_app.py (removed 2026-08-21
++# after being exposed in a public repo). Set them in Railway BEFORE deploying.
++
++# Retell (AI voice) - Get from dashboard.retellai.com → API Keys
++RETELL_API_KEY=your_retell_api_key_here
++
++# Outbound caller ID - must be a number you own in Retell, SMS enabled
++HAILEY_PHONE_NUMBER=+17027105676
++RETELL_PHONE_NUMBER=+17027105676
++SMS_PHONE_NUMBER=+17027105676
++
++# Shared secret for internal/scheduled call endpoints (X-Internal-Key header).
++# If unset, internal-key auth is refused outright rather than allowed through.
++INTERNAL_API_KEY=generate_a_long_random_string
++
++# GoHighLevel
++GHL_API_KEY=your_ghl_api_key_here
++GHL_LOCATION_ID=your_ghl_location_id
+ 
+ # VAPI (Voice AI) - Get from vapi.ai
+ VAPI_API_KEY=your_vapi_api_key_here
+diff --git a/voice_app.py b/voice_app.py
+index 1ea393b..497b657 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -15,6 +15,7 @@ import json, sqlite3, os, requests, threading, time, webbrowser, re
+ from datetime import datetime, timedelta
+ from urllib.parse import urlparse, parse_qs
+ import base64
++import hmac
+ 
+ # ═══════════════════════════════════════════════════════════════════════════════
+ # CONFIGURATION - Set these in Railway dashboard as environment variables
+@@ -23,16 +24,17 @@ import base64
+ # API Keys - Add these in Railway: Settings → Variables
+ VAPI_API_KEY = os.environ.get('VAPI_API_KEY', '')
+ VAPI_PHONE_ID = os.environ.get('VAPI_PHONE_ID', '')
+-RETELL_API_KEY = os.environ.get('RETELL_API_KEY', 'key_9128661dbc7b1c100bac91bbcf9b')  # Retell API Key
++RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railway → Variables
+ # ============ PHONE NUMBER CONFIGURATION ============
+ # Primary Retell number for AI calls (Camden, NJ - calls only, no SMS yet)
+ # ═══════════════════════════════════════════════════════════════════════════════
+ # 🔥 HAILEY OUTBOUND - SAME NUMBER FOR CALLS + TEXTS!
+-# +14012989927 has SMS enabled in Retell - use for EVERYTHING!
++# +17027105676 (702 Las Vegas) - confirm SMS is enabled on this number in Retell.
++# NOTE: Denver leads see a Vegas area code. A 303/720 number will lift answer rates.
+ # ═══════════════════════════════════════════════════════════════════════════════
+-HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+14012989927')  # Retell SMS enabled!
+-RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+14012989927')  # Same number!
+-SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+14012989927')  # Same number for SMS via Retell!
++HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17027105676')
++RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17027105676')  # Same number!
++SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17027105676')  # Same number for SMS via Retell!
+ 
+ # Text before call settings (NEPQ style)
+ TEXT_BEFORE_CALL = os.environ.get('TEXT_BEFORE_CALL', 'true').lower() == 'true'
+@@ -42,13 +44,13 @@ TEXT_DELAY_SECONDS = int(os.environ.get('TEXT_DELAY_SECONDS', '30'))  # Wait 30
+ BYPASS_CALLING_HOURS = os.environ.get('BYPASS_CALLING_HOURS', 'true').lower() == 'true'
+ 
+ # Retell API Key (for SMS and calls)
+-RETELL_API_KEY = os.environ.get('RETELL_API_KEY', 'key_9128661dbc7b1c100bac91bbcf9b')
++RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railway → Variables
+ 
+ # Disabled - using Retell directly now with SMS!
+ USE_VERIFIED_CALLER_ID = False
+ 
+ # Your Twilio credentials (backup)
+-YOUR_TWILIO_SID = os.environ.get('YOUR_TWILIO_SID', 'AC193aab31641b66489bda9aa8c0332a9c')
++YOUR_TWILIO_SID = os.environ.get('YOUR_TWILIO_SID', '')
+ YOUR_TWILIO_AUTH = os.environ.get('YOUR_TWILIO_AUTH', '')
+ 
+ # ============ LOCAL PRESENCE - PHONE NUMBER POOL ============
+@@ -57,11 +59,15 @@ YOUR_TWILIO_AUTH = os.environ.get('YOUR_TWILIO_AUTH', '')
+ # The system will match the lead's area code to call from a local number
+ RETELL_PHONE_POOL = {
+     # Using Hailey's main number for all outbound (SMS enabled!)
+-    '401': '+14012989927',  # Rhode Island - Hailey main number
+-    '702': '+14012989927',  # Las Vegas NV
+-    '725': '+14012989927',  # Las Vegas NV
+-    '775': '+14012989927',  # Reno NV
+-    
++    '702': '+17027105676',  # Las Vegas NV - Hailey main number
++    '725': '+17027105676',  # Las Vegas NV
++    '775': '+17027105676',  # Reno NV
++
++    # TODO Denver local presence: buy a 303/720 number in Retell and map it here.
++    # Denver leads currently fall through to the default number (Vegas area code).
++    # '303': '+1303XXXXXXX',  # Denver CO
++    # '720': '+1720XXXXXXX',  # Denver CO
++
+     # Add more numbers as you buy them:
+     # '480': '+14805551234',  # Phoenix AZ
+     # '602': '+16025551234',  # Phoenix AZ
+@@ -75,15 +81,15 @@ RETELL_PHONE_POOL = {
+ 
+ # State-level fallbacks (if no exact area code match)
+ RETELL_STATE_FALLBACK = {
+-    'NV': '+14012989927',  # Nevada → Hailey main number
+-    'RI': '+14012989927',  # Rhode Island → Hailey main number
++    'NV': '+17027105676',  # Nevada → Hailey main number
++    # 'CO': '+1720XXXXXXX',  # Colorado → Denver (add once a 303/720 number is bought)
+     # 'AZ': '+14805551234',  # Arizona → Phoenix
+     # 'CA': '+13105551234',  # California → LA
+     # 'HI': '+18085551234',  # Hawaii
+ }
+ 
+ # Default fallback number (used when no match found) - SMS enabled!
+-RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+14012989927')
++RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17027105676')
+ 
+ def get_local_presence_number(lead_phone, lead_state=None):
+     """
+@@ -156,10 +162,10 @@ def get_local_presence_number(lead_phone, lead_state=None):
+     return RETELL_DEFAULT_NUMBER
+ RETELL_INBOUND_NUMBER = '+17207345479'  # Retell number for INBOUND reception tests
+ TWILIO_INBOUND_NUMBER = '+17208189512'  # Twilio number for inbound (Custom Telephony)
+-# SMS now via Retell! Using HAILEY_PHONE_NUMBER (+14012989927) - Same number for calls + texts!
++# SMS now via Retell! Using HAILEY_PHONE_NUMBER (+17027105676) - Same number for calls + texts!
+ # ====================================================
+-TWILIO_SID = os.environ.get('TWILIO_SID', 'ACd79ff0d5a125e3ea6c25d9e2fe5238d2')
+-TWILIO_TOKEN = os.environ.get('TWILIO_TOKEN', '2aae70b1a8906c3249bb79d9da33db56')
++TWILIO_SID = os.environ.get('TWILIO_SID', '')
++TWILIO_TOKEN = os.environ.get('TWILIO_TOKEN', '')
+ TWILIO_PHONE = os.environ.get('TWILIO_PHONE', '+17208189512')
+ TEST_PHONE = os.environ.get('TEST_PHONE', '')
+ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+@@ -393,14 +399,28 @@ def get_client_ip(handler):
+     # Fall back to direct connection
+     return handler.client_address[0] if handler.client_address else 'unknown'
+ 
++def has_valid_internal_key(handler):
++    """True only when INTERNAL_API_KEY is configured AND the header matches it.
++
++    Both sides must be non-empty: an unset env var must never make a request
++    with no X-Internal-Key header authenticate by comparing '' == ''.
++    """
++    configured = os.environ.get('INTERNAL_API_KEY', '')
++    if not configured:
++        return False
++    presented = handler.headers.get('X-Internal-Key', '')
++    if not presented:
++        return False
++    return hmac.compare_digest(presented, configured)
++
++
+ def validate_call_request(handler, phone, require_auth=True):
+     """Validate a call request - returns (valid, error_message)"""
+-    
++
+     # 1. Check if website widget is enabled
+     if not WEBSITE_WIDGET_ENABLED:
+         # Check if this is an internal scheduled call (has special header)
+-        internal_key = handler.headers.get('X-Internal-Key', '')
+-        if internal_key != os.environ.get('INTERNAL_API_KEY', 'voicelab-internal-2026'):
++        if not has_valid_internal_key(handler):
+             return False, "Web calls are disabled. Contact support."
+     
+     # 2. Rate limiting
+@@ -422,8 +442,7 @@ def validate_call_request(handler, phone, require_auth=True):
+         # Check for valid auth
+         if not auth_token and 'session=' not in session_cookie:
+             # Allow internal calls
+-            internal_key = handler.headers.get('X-Internal-Key', '')
+-            if internal_key != os.environ.get('INTERNAL_API_KEY', 'voicelab-internal-2026'):
++            if not has_valid_internal_key(handler):
+                 return False, "Authentication required"
+     
+     return True, None
+@@ -4764,7 +4783,7 @@ def ghl_import_contacts_from_ghl():
+ def send_sms(phone, message, message_type="general", name="", address=""):
+     """
+     Send SMS via Retell API - same number as calls!
+-    Uses HAILEY_PHONE_NUMBER (+14012989927) for all outbound SMS.
++    Uses HAILEY_PHONE_NUMBER (+17027105676) for all outbound SMS.
+     
+     NOTE: Retell SMS uses chat agents - the message is auto-generated by the agent.
+     We pass name, address, etc. as dynamic variables so the chat agent can use them.
+@@ -5609,7 +5628,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
+     elif agent_type == 'roofing':
+         # ROOFING CLIENT - Bulldog Roofing Hailey (NEPQ v2.3)
+         retell_agent_id = 'agent_50ac8943b545a778304e160e93'  # ROOFING AGENT - HAILEY
+-        from_number = HAILEY_PHONE_NUMBER  # +14012989927 - Hailey Retell (SMS enabled!)
++        from_number = HAILEY_PHONE_NUMBER  # +17027105676 - Hailey Retell (SMS enabled!)
+         print(f"\U0001F525 HAILEY ROOFING (SMS ENABLED): {from_number}")
+         call_type = "outbound"
+         call_purpose = "appointment_setting"
+@@ -5620,12 +5639,12 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
+         print(f"\u2705 USING ROOFING AGENT: {retell_agent_id}")
+         print(f"\u2705 USING HAILEY NUMBER: {from_number}")
+     elif agent_type == 'solar':
+-        # SOLAR DISABLED 2026-06-05: original agent agent_a722737690485bd3cc013c9d3a was 403 ToS-blocked.
+-        # Routing any stray 'solar' traffic to the live roofing agent so calls still connect.
+-        retell_agent_id = 'agent_50ac8943b545a778304e160e93'  # ROOFING AGENT - HAILEY (solar fallback)
+-        # 🔥 HAILEY LAS VEGAS - SAME NUMBER FOR CALLS + TEXTS!
+-        from_number = HAILEY_PHONE_NUMBER  # +14012989927 - Hailey Retell (SMS enabled!)
+-        print(f"🔥 HAILEY LAS VEGAS (SMS ENABLED): {from_number}")
++        # SOLAR RE-ENABLED 2026-08-21: original agent agent_a722737690485bd3cc013c9d3a was 403
++        # ToS-blocked on 2026-06-05 and traffic was temporarily routed to the roofing agent.
++        # Now pointed at the replacement solar agent.
++        retell_agent_id = 'agent_51e1e8bbc32e11ce5d2f313d5b'  # SOLAR AGENT - HAILEY
++        from_number = HAILEY_PHONE_NUMBER  # Retell outbound (SMS enabled)
++        print(f"🔥 HAILEY OUTBOUND (SMS ENABLED): {from_number}")
+         call_type = "outbound"
+         call_purpose = "appointment_setting"
+         greeting_style = "sales"
+@@ -5640,7 +5659,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
+     else:
+         retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # Paige OUTBOUND (Demo)
+         # 🔥 HAILEY LAS VEGAS NUMBER - Direct Retell
+-        from_number = HAILEY_PHONE_NUMBER  # +14012989927 - Hailey Retell (SMS enabled!)
++        from_number = HAILEY_PHONE_NUMBER  # +17027105676 - Hailey Retell (SMS enabled!)
+         print(f"🔥 HAILEY LAS VEGAS: {from_number}")
+         call_type = "outbound"
+         call_purpose = "appointment_setting"
+@@ -14713,7 +14732,7 @@ def send_twilio_sms(to_number, message):
+     """
+     account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+     auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+-    from_number = os.environ.get('OUTBOUND_NUMBER', '+14012989927')
++    from_number = os.environ.get('OUTBOUND_NUMBER', '+17027105676')
+     
+     if not account_sid or not auth_token:
+         return {'success': False, 'error': 'Twilio credentials not configured'}
+@@ -16157,7 +16176,7 @@ nav a:hover{{color:var(--text)}}
+                 all_calls = [dict(row) for row in c.fetchall()]
+                 
+                 # Outbound number performance (fatigue detection)
+-                outbound_number = RETELL_PHONE_NUMBER  # +14012989927 (Hailey)
++                outbound_number = RETELL_PHONE_NUMBER  # +17027105676 (Hailey)
+                 c.execute('''SELECT COUNT(*) as total, 
+                     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as answered,
+                     SUM(CASE WHEN status IN ('no_answer', 'short_call', 'voicemail', 'busy') THEN 1 ELSE 0 END) as no_answer
+@@ -16995,7 +17014,7 @@ details summary::-webkit-details-marker{{display:none}}
+                         retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # OUTBOUND agent
+                         # 🔥 USE VERIFIED CALLER ID - Same number as GHL texts!
+                         if USE_VERIFIED_CALLER_ID:
+-                            from_number = VERIFIED_CALLER_ID  # +14012989927 - Same as GHL SMS!
++                            from_number = VERIFIED_CALLER_ID  # +17027105676 - Same as GHL SMS!
+                         else:
+                             from_number = RETELL_PHONE_NUMBER  # Fallback
+                         opening = f"Hi, this is {agent_name} with {company}. I'm reaching out because you recently inquired about our {industry.lower()} services. Do you have a quick moment?"
+@@ -18621,7 +18640,7 @@ def retell_webhook():
+ # 🔥 TWILIO → RETELL BRIDGE
+ # Uses YOUR Twilio to make calls (shows verified caller ID)
+ # Then connects to Retell AI for the conversation
+-# Customer sees +14012989927 for CALLS and TEXTS!
++# Customer sees +17027105676 for CALLS and TEXTS!
+ # ═══════════════════════════════════════════════════════════════════════════════
+ 
+ def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", ghl_contact_id=None, address=""):
+@@ -18630,7 +18649,7 @@ def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", g
+     1. Register call with Retell (get WebSocket URL)
+     2. Twilio makes outbound call from YOUR verified caller ID
+     3. Twilio streams audio to Retell WebSocket
+-    4. Customer sees +14012989927 for everything!
++    4. Customer sees +17027105676 for everything!
+     """
+     import base64
+     from urllib.parse import urlencode
+@@ -18654,8 +18673,8 @@ def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", g
+     if agent_type == 'roofing':
+         retell_agent_id = 'agent_50ac8943b545a778304e160e93'  # ROOFING AGENT - HAILEY
+     elif agent_type == 'solar':
+-        # SOLAR DISABLED 2026-06-05: blocked agent removed, fall back to roofing agent.
+-        retell_agent_id = 'agent_50ac8943b545a778304e160e93'  # ROOFING AGENT - HAILEY (solar fallback)
++        # SOLAR RE-ENABLED 2026-08-21: pointed at the replacement solar agent.
++        retell_agent_id = 'agent_51e1e8bbc32e11ce5d2f313d5b'  # SOLAR AGENT - HAILEY
+     else:
+         retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # Default outbound
+     
+@@ -18866,7 +18885,7 @@ def text_then_call(phone, name="there", agent_type="solar", ghl_contact_id=None,
+     2. Wait delay_seconds
+     3. Make AI call
+     
+-    Customer sees SAME number (+14012989927) for both!
++    Customer sees SAME number (+17027105676) for both!
+     """
+     import threading
+     import time
+-- 
+2.43.0
+

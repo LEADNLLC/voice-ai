@@ -199,6 +199,9 @@ OWNER_PHONE = os.environ.get('OWNER_PHONE', '+17023240525')
 # appointment alert destination doesn't silently re-route every other owner alert.
 APPT_ALERT_PHONE = os.environ.get('APPT_ALERT_PHONE', '+17026721251')
 
+# Printed at startup so you can tell from the Railway logs whether a deploy took.
+BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 override_agent_id + denver-720')
+
 # ============ CALL SEQUENCE HYGIENE ============
 # An 'active' sequence older than this is treated as abandoned and auto-cleared rather
 # than blocking a new one forever. Sequences themselves run max_days=7.
@@ -18847,7 +18850,31 @@ def main():
     HTTPServer(('', 8080), Handler).serve_forever()
 
 
+def print_boot_banner():
+    """Print the live routing config at startup.
+
+    Deploys are easy to get wrong and hard to confirm. If these lines are missing
+    from the Railway logs, this build is NOT running and nothing below is in effect.
+    """
+    print("")
+    print("=" * 62)
+    print("  VOICELAB BOOT  ", BUILD_TAG)
+    print("=" * 62)
+    print(f"  solar  -> agent_51e1e8bbc32e11ce5d2f313d5b  (override_agent_id)")
+    print(f"  voice from      {HAILEY_PHONE_NUMBER}")
+    print(f"  sms   from      {SMS_PHONE_NUMBER}")
+    print(f"  calendar        '{GHL_CALENDAR_NAME}'  tz={GHL_TIMEZONE}")
+    print(f"  appt stage      '{GHL_APPT_STAGE_NAME}'")
+    print(f"  appt alert ->   {APPT_ALERT_PHONE}")
+    print(f"  RETELL_API_KEY  {'set' if RETELL_API_KEY else '*** MISSING - calls will 401 ***'}")
+    print(f"  GHL_API_KEY     {'set' if GHL_API_KEY else '*** MISSING ***'}")
+    print(f"  test phones     {sorted(TEST_PHONES) or '(none)'}")
+    print("=" * 62)
+    print("")
+
+
 if __name__ == '__main__':
+    print_boot_banner()
     main()
 """
 =================================================================

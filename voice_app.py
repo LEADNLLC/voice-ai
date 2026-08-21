@@ -5657,6 +5657,10 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
         print(f"✅ USING SOLAR CLIENT AGENT: {retell_agent_id}")
         print(f"✅ USING HAILEY NUMBER: {from_number}")
     else:
+        # Unrecognized agent_type lands here and dials the DEMO agent against a real lead.
+        # Loud on purpose: this is a misconfiguration, not a normal path.
+        print(f"⚠️⚠️ UNRECOGNIZED agent_type '{agent_type}' - falling back to the Paige DEMO agent.")
+        print(f"⚠️⚠️ Expected one of: 'roofing', 'solar', or an 'inbound_*' type. Check the GHL payload.")
         retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # Paige OUTBOUND (Demo)
         # 🔥 HAILEY LAS VEGAS NUMBER - Direct Retell
         from_number = HAILEY_PHONE_NUMBER  # +17027105676 - Hailey Retell (SMS enabled!)
@@ -17294,11 +17298,17 @@ Let's close some deals! 🚀"""
                 _cd = d.get('customData', {}) if isinstance(d.get('customData', {}), dict) else {}
                 if _cd.get('action'):
                     action = _cd.get('action')
-                agent_type = _cd.get('agent_type') or d.get('agent_type') or 'roofing'  # Default roofing
-                if agent_type == 'solar':
-                    print("\u26A0\uFE0F  agent_type 'solar' received but solar agent is disabled - forcing roofing")
-                    agent_type = 'roofing'
-                
+                agent_type = _cd.get('agent_type') or d.get('agent_type') or 'solar'
+                # Normalize: GHL sends display-cased values like 'Roofing' / 'Solar', but every
+                # downstream branch compares against exact lowercase. Without this, 'Solar' misses
+                # the solar branch and silently falls through to the Paige demo agent.
+                agent_type = str(agent_type).strip().lower().replace(' ', '_')
+                # NOTE: the 2026-06-05 'solar -> roofing' override was removed 2026-08-21 when the
+                # replacement solar agent (agent_51e1e8bbc32e11ce5d2f313d5b) went live. Do not
+                # reinstate it - it silently overrode whatever GHL sent.
+                print(f"\U0001F4E5 agent_type resolved: '{agent_type}'")
+
+
                 print(f"📥 Parsed: contact_id={contact_id}, phone={phone}, first_name={first_name}, address={address}")
                 
                 if not phone:

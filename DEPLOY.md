@@ -1,138 +1,118 @@
-# voicelab — solar routing cutover
+# voicelab — why that test didn't dial
 
-Changes are made and the file compiles clean. **Do the steps in this order** — deploying
-before step 1 will take the app down, because the API key fallbacks were removed.
-
----
-
-## ⚠️ Step 0 — Rotate the exposed credentials (do this first, regardless)
-
-`LEADNLLC/voice-ai` is a **public** repo, and until now `voice_app.py` carried live
-credentials as fallback defaults. Assume they are compromised — scraper bots watch
-GitHub for exactly this and hit within hours.
-
-| Credential | Where to rotate |
-|---|---|
-| Twilio auth token | console.twilio.com → Account → API keys & tokens → rotate |
-| Retell API key | dashboard.retellai.com → API Keys → revoke + create new |
-
-While you're in Twilio, check **Monitor → Logs → Calls** and the billing page for
-traffic you don't recognize. An exposed Twilio token is normally drained via
-international premium-rate calls.
-
-Removing the keys from the current file does **not** remove them from git history —
-they remain readable in commit `3031a57`. Rotation is the only real fix.
+Your log shows the new code **is** live (the outbound number printed as `+17027105676`).
+Two things blocked the call, and one of them was my miss.
 
 ---
 
-## Step 1 — Set the Railway variables
-
-Railway → your service → **Variables**. These no longer have code fallbacks:
+## 1. The 401 — `RETELL_API_KEY` isn't set in Railway
 
 ```
-RETELL_API_KEY       = <your NEW rotated Retell key>
-HAILEY_PHONE_NUMBER  = +17027105676
-RETELL_PHONE_NUMBER  = +17027105676
-SMS_PHONE_NUMBER     = +17027105676
-INTERNAL_API_KEY     = <a long random string>
-TWILIO_SID           = <your NEW Twilio SID>      # optional, owner SMS alerts only
-TWILIO_TOKEN         = <your NEW Twilio token>    # optional, owner SMS alerts only
+❌ Retell SMS failed: 401
+   {"message":"The authorization header must be in the format of 'Bearer <YOUR-API-KEY>'"}
+   📡 Retell: 401
 ```
 
-Twilio is only used for alert texts to you and is guarded by an `if` — leaving it
-blank degrades quietly, it won't crash the app. `RETELL_API_KEY` is **not** optional.
+Retell isn't rejecting a *wrong* key — it's saying the header is *malformed*. The code
+sends `Authorization: Bearer {RETELL_API_KEY}`, and with that variable empty the header
+goes out as a bare `Bearer ` with nothing after it. That's the exact failure mode of
+deploying after the hardcoded fallback was removed but before the variable was set.
+
+**Fix:** Railway → your service → Variables → add `RETELL_API_KEY` = your rotated key,
+then redeploy. Nothing else in this file matters until that's set — every call and text
+will 401 regardless of routing.
+
+Verify with the Retell key that's actually live now (if you rotated, use the new one).
 
 ---
 
-## Step 2 — Upload the changed files
+## 2. My miss — a hidden override was forcing solar back to roofing
 
-Your repo history is a single "Add files via upload" commit, so the GitHub web UI is
-the path of least resistance. Drag these into the repo root:
+This is on me. When I made the first pass I fixed the two routing sites in `make_call`,
+but there was a **third** override sitting upstream in the GHL webhook handler that I
+didn't catch:
 
-- `voice_app.py` — the three routing/config changes
-- `env.example` — documents the now-required variables
-- `.gitignore` — **note the leading dot**; the old file was named `gitignore`, which
-  made it completely inert. That's how the `.env` protection failed in the first place.
-
-Delete the old `gitignore` (no dot) after uploading.
-
-If you'd rather apply it as a patch: `git am < voicelab-solar-routing.patch`
-
----
-
-## Step 3 — Clear the stuck sequence
-
-`clear_stuck_sequence.py` clears the `call_sequences` row that produces
-*"Sequence already active for this lead."* It's a dry run unless you pass `--apply`.
-
-```bash
-python3 clear_stuck_sequence.py --list                    # see what's active
-python3 clear_stuck_sequence.py --phone 7025551234        # preview
-python3 clear_stuck_sequence.py --phone 7025551234 --apply
+```python
+agent_type = _cd.get('agent_type') or d.get('agent_type') or 'roofing'
+if agent_type == 'solar':
+    print("⚠️  agent_type 'solar' received but solar agent is disabled - forcing roofing")
+    agent_type = 'roofing'          # <-- stomped whatever GHL sent
 ```
 
-Phone matching is on the last 10 digits, so `+1`, dashes, and parens all work.
+Added during the June ToS-block, never removed. It intercepted `solar` **before** routing
+ever ran — so even with GHL fixed and my earlier patch deployed, you'd still have landed
+on the roofing agent. Removed now.
 
-**Run this on Railway** (`railway run python3 clear_stuck_sequence.py ...`), not
-locally — see the warning below about where the database lives.
+While in there I also fixed a related trap. Your payload sends **`'agent_type': 'Roofing'`**
+— capital R — but every branch compares against exact lowercase `'solar'` / `'roofing'`.
+So had you simply set GHL to `Solar`, it would have missed the solar branch *and* the
+roofing branch and fallen through to the **Paige demo agent** on a live lead, with no
+error. The handler now normalizes with `.strip().lower()`, and the fallback branch logs
+loudly instead of dialing a demo agent in silence.
 
----
+Verified across the casings GHL actually sends:
 
-## Step 4 — GHL, both webhook workflows
-
-Nothing here is code; it's all in the GHL workflow UI:
-
-| Field | From | To |
+| GHL sends | resolves to | agent |
 |---|---|---|
-| `agent_type` | `roofing` | `solar` |
-| `contact_id` | Account.Owner.ID | **Contact.Id** |
-| `state` | hardcoded `"roofing"` | **Contact.State** |
+| `Solar` | `solar` | `agent_51e1e8bbc32e11ce5d2f313d5b` ✅ |
+| `solar` | `solar` | `agent_51e1e8bbc32e11ce5d2f313d5b` ✅ |
+| `Roofing` | `roofing` | `agent_50ac8943...` (Bulldog — correct, separate client) |
+| missing/empty | `solar` | `agent_51e1e8bbc32e11ce5d2f313d5b` ✅ |
+
+I also flipped the default from `roofing` to `solar`, so a payload missing the field
+lands on solar rather than dialing your roofing client's agent.
 
 ---
 
-## Step 5 — Test
-
-Fresh contact, real cell, tag `english`. Watch the Railway deploy logs — the routing
-block prints what it picked:
+## 3. GHL is still sending `Roofing`
 
 ```
+'customData': {'action': 'sequence', ..., 'agent_type': 'Roofing'}
+```
+
+Set it to `solar` in **both** webhook workflows. Casing no longer matters after the fix
+above, but the *value* still has to change.
+
+Also still missing from `customData`: **`state`**. Your payload has `location.state: 'CO'`
+(that's your business address, not the lead's) but no lead-level state field. Add
+`state` = Contact.State.
+
+`contact_id` looks correct now — `jrkqQPsQHDuX2VCFVvHT` is a real contact ID, not the
+account owner ID. That one's done.
+
+---
+
+## Do these in order
+
+1. **Set `RETELL_API_KEY` in Railway.** Nothing works until this is done.
+2. **Upload the new `voice_app.py`** (override removal + normalization).
+3. **GHL, both workflows:** `agent_type` → `solar`, add `state` → Contact.State.
+4. **Clear the stuck sequence** — your test contact now has an active row:
+   `python3 clear_stuck_sequence.py --phone 7026721251 --apply`
+5. **Re-test.** You want to see exactly this:
+
+```
+📥 agent_type resolved: 'solar'
 🔍 AGENT TYPE RECEIVED: 'solar'
 ✅ USING SOLAR CLIENT AGENT: agent_51e1e8bbc32e11ce5d2f313d5b
 ✅ USING HAILEY NUMBER: +17027105676
+📡 Retell: 201
 ```
 
-If you see `agent_50ac8943...` there, GHL is still sending `roofing`.
+`📡 Retell: 201` is the one that means a call actually left. `401` = step 1 not done.
+If you see `⚠️⚠️ UNRECOGNIZED agent_type`, GHL is sending something unexpected — the
+line prints the value it got.
 
 ---
 
-## 🚩 Two things worth fixing next
+## Still outstanding from before
 
-**Your database is on ephemeral disk.** `DB_PATH` defaults to `~/voice.db` — SQLite on
-Railway's container filesystem. Unless you've mounted a volume, **every deploy wipes
-all leads, call history, and sequences.** Deploying this change would do it. Check
-Railway → Settings → Volumes before you push; if there's no volume, add one mounted at
-the DB's directory, or move to Railway Postgres. This is a bigger problem than the
-routing bug was.
+**Rotate the exposed Twilio token and Retell key** if you haven't. They were public in
+`LEADNLLC/voice-ai` and remain in commit `3031a57` regardless of the current file.
 
-**The 702 is a Las Vegas number and you're calling Denver.** Worth correcting the
-record: the number you were on before (`+1401...`) was Rhode Island, so 702 is an
-improvement, but neither is local. Buy a **303 or 720** number in Retell and add it —
-I left the slots stubbed and commented in both `RETELL_PHONE_POOL` and
-`RETELL_STATE_FALLBACK`, so it's an uncomment-and-fill. Local presence is typically
-the single biggest lever on answer rate.
+**Check for a Railway volume.** `DB_PATH` is `~/voice.db` — SQLite on container disk.
+With no volume mounted, every deploy wipes leads, call history, and sequences. You're
+about to deploy again.
 
----
-
-## What changed in `voice_app.py`
-
-| Area | Change |
-|---|---|
-| Solar routing (2 sites, ~L5625 and ~L18657) | `agent_50ac8943...` (roofing fallback) → `agent_51e1e8bbc32e11ce5d2f313d5b` |
-| Outbound number | every `+14012989927` → `+17027105676`, incl. pool, state fallback, defaults |
-| `RETELL_API_KEY` ×2, `TWILIO_SID`, `TWILIO_TOKEN`, `YOUR_TWILIO_SID` | hardcoded values → `''` |
-| `INTERNAL_API_KEY` | default `'voicelab-internal-2026'` → `''`, plus a new `has_valid_internal_key()` |
-
-That last one needed care: blanking the default alone would have created an **auth
-bypass** — a request with no `X-Internal-Key` header sends `''`, which would have
-compared equal to the now-empty default and passed. The new helper requires both sides
-non-empty and uses `hmac.compare_digest`. The roofing agent ID is untouched.
+**Denver local presence.** You're dialing Denver leads from a Vegas number. The 303/720
+slots are stubbed and commented in `RETELL_PHONE_POOL` and `RETELL_STATE_FALLBACK`.

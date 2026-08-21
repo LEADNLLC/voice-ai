@@ -1,7 +1,7 @@
 From 78a61824389b5b6d175bb04cd27ae4407690f40a Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:19:00 +0000
-Subject: [PATCH 1/6] Route solar to new Retell agent, move outbound to
+Subject: [PATCH 1/8] Route solar to new Retell agent, move outbound to
  +17027105676, remove committed secrets
 
 ---
@@ -323,7 +323,7 @@ index 1ea393b..497b657 100644
 From c07ec35ae2728d1f59312031fa2feaf54fbc9fa5 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:31:05 +0000
-Subject: [PATCH 2/6] Remove solar->roofing webhook override, normalize
+Subject: [PATCH 2/8] Remove solar->roofing webhook override, normalize
  agent_type casing, loud unknown-agent fallback
 
 ---
@@ -375,7 +375,7 @@ index 497b657..dfec52f 100644
 From e3199bed8e2fad32b47494635c8073b88384389b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:52:38 +0000
-Subject: [PATCH 3/6] Pull address/state/phone from GHL contact record; scrub
+Subject: [PATCH 3/8] Pull address/state/phone from GHL contact record; scrub
  unresolved merge fields
 
 ---
@@ -540,7 +540,7 @@ index dfec52f..3f0a898 100644
 From 478b606c3449e553310f5c9fceb768580f0edf1d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:07:47 +0000
-Subject: [PATCH 4/6] Resolve booking calendar by name, DST-aware timezone
+Subject: [PATCH 4/8] Resolve booking calendar by name, DST-aware timezone
  offsets, attach recording to appointment
 
 ---
@@ -787,7 +787,7 @@ index 3f0a898..51f67f0 100644
 From 36845522c9edf14bf9bd90ceaca4f8ca799a6f86 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:08:25 +0000
-Subject: [PATCH 5/6] Default appointment timezone to America/Denver (homeowner
+Subject: [PATCH 5/8] Default appointment timezone to America/Denver (homeowner
  local time)
 
 ---
@@ -836,7 +836,7 @@ index 51f67f0..2e127c1 100644
 From 94d3724ed27b3ea40313b0f83c51b19dfa16004c Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:17:12 +0000
-Subject: [PATCH 6/6] Fix name matching for punctuated GHL names, move
+Subject: [PATCH 6/8] Fix name matching for punctuated GHL names, move
  opportunity to Appointment Set, text owner on booking
 
 ---
@@ -1261,6 +1261,147 @@ index 2e127c1..24d7ba1 100644
                          
                  except Exception as cal_err:
                      print(f"[RETELL WEBHOOK] ❌ Calendar error: {cal_err}")
+-- 
+2.43.0
+
+
+From ff0856260980dbb134f96e04a149a67ed5938d22 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 21:22:49 +0000
+Subject: [PATCH 7/8] Use override_agent_id: agent_id is not a valid
+ create-phone-call field and was being ignored
+
+---
+ voice_app.py | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/voice_app.py b/voice_app.py
+index 24d7ba1..afb1744 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -6088,7 +6088,10 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
+                 "Content-Type": "application/json"
+             },
+             json={
+-                "agent_id": retell_agent_id,
++                # Retell has NO "agent_id" field on create-phone-call. Sending it is silently
++                # ignored and the call runs whatever agent is BOUND TO THE NUMBER in the
++                # Retell dashboard. override_agent_id is the only way to pick the agent.
++                "override_agent_id": retell_agent_id,
+                 "from_number": from_number,
+                 "to_number": phone,
+                 "retell_llm_dynamic_variables": dynamic_vars
+@@ -17418,7 +17421,10 @@ details summary::-webkit-details-marker{{display:none}}
+                             "Content-Type": "application/json"
+                         },
+                         json={
+-                            "agent_id": retell_agent_id,
++                            # Retell has NO "agent_id" field on create-phone-call. Sending it is
++                            # silently ignored and the call runs whatever agent is BOUND TO THE
++                            # NUMBER. override_agent_id is the only way to pick the agent.
++                            "override_agent_id": retell_agent_id,
+                             "from_number": from_number,
+                             "to_number": formatted_phone,
+                             "retell_llm_dynamic_variables": {
+@@ -19195,7 +19201,10 @@ def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", g
+                 "Content-Type": "application/json"
+             },
+             json={
+-                "agent_id": retell_agent_id,
++                # Retell has NO "agent_id" field on create-phone-call. Sending it is silently
++                # ignored and the call runs whatever agent is BOUND TO THE NUMBER in the
++                # Retell dashboard. override_agent_id is the only way to pick the agent.
++                "override_agent_id": retell_agent_id,
+                 "from_number": VERIFIED_CALLER_ID,
+                 "to_number": phone,
+                 "direction": "outbound",
+-- 
+2.43.0
+
+
+From c5875a7a31f0cbefc5c791851756cc9cb830153f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 21:25:02 +0000
+Subject: [PATCH 8/8] Decouple SMS sender from call sender; add Denver 720 to
+ local presence pool
+
+---
+ env.example  |  9 +++++++++
+ voice_app.py | 23 ++++++++++++++++-------
+ 2 files changed, 25 insertions(+), 7 deletions(-)
+
+diff --git a/env.example b/env.example
+index a14972b..3921d2f 100644
+--- a/env.example
++++ b/env.example
+@@ -60,3 +60,12 @@ GHL_APPT_STAGE_NAME=Appointment Set
+ 
+ # Phone that gets the "appointment set" text
+ APPT_ALERT_PHONE=+17026721251
++
++# ── Numbers ──────────────────────────────────────────────────────────────────
++# Calls go out from HAILEY_PHONE_NUMBER; texts from SMS_PHONE_NUMBER.
++# Keep them SEPARATE if you SIP-trunk a number into Retell: a trunked number is
++# voice-only, Retell cannot send SMS over it.
++#   voice: SignalWire +17206864625 (Denver 720) once trunked into Retell
++#   sms:   Retell-native +17027105676 (needs A2P 10DLC registration to work)
++HAILEY_PHONE_NUMBER=+17206864625
++SMS_PHONE_NUMBER=+17027105676
+diff --git a/voice_app.py b/voice_app.py
+index afb1744..fc06fc7 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -63,10 +63,11 @@ RETELL_PHONE_POOL = {
+     '725': '+17027105676',  # Las Vegas NV
+     '775': '+17027105676',  # Reno NV
+ 
+-    # TODO Denver local presence: buy a 303/720 number in Retell and map it here.
+-    # Denver leads currently fall through to the default number (Vegas area code).
+-    # '303': '+1303XXXXXXX',  # Denver CO
+-    # '720': '+1720XXXXXXX',  # Denver CO
++    # Denver local presence - SignalWire number, connected to Retell via SIP trunking.
++    # VOICE ONLY: Retell cannot send SMS over a SIP trunk, so texts stay on
++    # SMS_PHONE_NUMBER (a Retell-native number).
++    '303': '+17206864625',  # Denver CO
++    '720': '+17206864625',  # Denver CO
+ 
+     # Add more numbers as you buy them:
+     # '480': '+14805551234',  # Phoenix AZ
+@@ -82,7 +83,7 @@ RETELL_PHONE_POOL = {
+ # State-level fallbacks (if no exact area code match)
+ RETELL_STATE_FALLBACK = {
+     'NV': '+17027105676',  # Nevada → Hailey main number
+-    # 'CO': '+1720XXXXXXX',  # Colorado → Denver (add once a 303/720 number is bought)
++    'CO': '+17206864625',  # Colorado → Denver (SignalWire, SIP-trunked into Retell)
+     # 'AZ': '+14805551234',  # Arizona → Phoenix
+     # 'CA': '+13105551234',  # California → LA
+     # 'HI': '+18085551234',  # Hawaii
+@@ -5238,7 +5239,11 @@ def send_retell_sms(to_number, message="", from_number=None, name="", address=""
+     The chat agent uses dynamic variables: {{first_name}}, {{address}}
+     """
+     to_number = format_phone(to_number)
+-    from_number = from_number or HAILEY_PHONE_NUMBER
++    # Texts go from SMS_PHONE_NUMBER, calls from HAILEY_PHONE_NUMBER. These used to be
++    # the same value, but a SIP-trunked number (e.g. a SignalWire 720 for Denver local
++    # presence) carries VOICE ONLY - Retell cannot text from it. Keeping them separate
++    # lets calls move to the trunked number while texts stay on a Retell-native number.
++    from_number = from_number or SMS_PHONE_NUMBER or HAILEY_PHONE_NUMBER
+     first_name = name.split()[0] if name else "there"
+     
+     print(f"📱 Sending Retell SMS...")
+@@ -19325,7 +19330,11 @@ def send_retell_sms(to_number, message="", from_number=None, name="", address=""
+     The chat agent uses dynamic variables: {{first_name}}, {{address}}
+     """
+     to_number = format_phone(to_number)
+-    from_number = from_number or HAILEY_PHONE_NUMBER
++    # Texts go from SMS_PHONE_NUMBER, calls from HAILEY_PHONE_NUMBER. These used to be
++    # the same value, but a SIP-trunked number (e.g. a SignalWire 720 for Denver local
++    # presence) carries VOICE ONLY - Retell cannot text from it. Keeping them separate
++    # lets calls move to the trunked number while texts stay on a Retell-native number.
++    from_number = from_number or SMS_PHONE_NUMBER or HAILEY_PHONE_NUMBER
+     first_name = name.split()[0] if name else "there"
+     
+     print(f"📱 Sending Retell SMS...")
 -- 
 2.43.0
 

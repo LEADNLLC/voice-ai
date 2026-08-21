@@ -63,10 +63,11 @@ RETELL_PHONE_POOL = {
     '725': '+17027105676',  # Las Vegas NV
     '775': '+17027105676',  # Reno NV
 
-    # TODO Denver local presence: buy a 303/720 number in Retell and map it here.
-    # Denver leads currently fall through to the default number (Vegas area code).
-    # '303': '+1303XXXXXXX',  # Denver CO
-    # '720': '+1720XXXXXXX',  # Denver CO
+    # Denver local presence - SignalWire number, connected to Retell via SIP trunking.
+    # VOICE ONLY: Retell cannot send SMS over a SIP trunk, so texts stay on
+    # SMS_PHONE_NUMBER (a Retell-native number).
+    '303': '+17206864625',  # Denver CO
+    '720': '+17206864625',  # Denver CO
 
     # Add more numbers as you buy them:
     # '480': '+14805551234',  # Phoenix AZ
@@ -82,7 +83,7 @@ RETELL_PHONE_POOL = {
 # State-level fallbacks (if no exact area code match)
 RETELL_STATE_FALLBACK = {
     'NV': '+17027105676',  # Nevada → Hailey main number
-    # 'CO': '+1720XXXXXXX',  # Colorado → Denver (add once a 303/720 number is bought)
+    'CO': '+17206864625',  # Colorado → Denver (SignalWire, SIP-trunked into Retell)
     # 'AZ': '+14805551234',  # Arizona → Phoenix
     # 'CA': '+13105551234',  # California → LA
     # 'HI': '+18085551234',  # Hawaii
@@ -5238,7 +5239,11 @@ def send_retell_sms(to_number, message="", from_number=None, name="", address=""
     The chat agent uses dynamic variables: {{first_name}}, {{address}}
     """
     to_number = format_phone(to_number)
-    from_number = from_number or HAILEY_PHONE_NUMBER
+    # Texts go from SMS_PHONE_NUMBER, calls from HAILEY_PHONE_NUMBER. These used to be
+    # the same value, but a SIP-trunked number (e.g. a SignalWire 720 for Denver local
+    # presence) carries VOICE ONLY - Retell cannot text from it. Keeping them separate
+    # lets calls move to the trunked number while texts stay on a Retell-native number.
+    from_number = from_number or SMS_PHONE_NUMBER or HAILEY_PHONE_NUMBER
     first_name = name.split()[0] if name else "there"
     
     print(f"📱 Sending Retell SMS...")
@@ -6088,7 +6093,10 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
                 "Content-Type": "application/json"
             },
             json={
-                "agent_id": retell_agent_id,
+                # Retell has NO "agent_id" field on create-phone-call. Sending it is silently
+                # ignored and the call runs whatever agent is BOUND TO THE NUMBER in the
+                # Retell dashboard. override_agent_id is the only way to pick the agent.
+                "override_agent_id": retell_agent_id,
                 "from_number": from_number,
                 "to_number": phone,
                 "retell_llm_dynamic_variables": dynamic_vars
@@ -17418,7 +17426,10 @@ details summary::-webkit-details-marker{{display:none}}
                             "Content-Type": "application/json"
                         },
                         json={
-                            "agent_id": retell_agent_id,
+                            # Retell has NO "agent_id" field on create-phone-call. Sending it is
+                            # silently ignored and the call runs whatever agent is BOUND TO THE
+                            # NUMBER. override_agent_id is the only way to pick the agent.
+                            "override_agent_id": retell_agent_id,
                             "from_number": from_number,
                             "to_number": formatted_phone,
                             "retell_llm_dynamic_variables": {
@@ -19195,7 +19206,10 @@ def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", g
                 "Content-Type": "application/json"
             },
             json={
-                "agent_id": retell_agent_id,
+                # Retell has NO "agent_id" field on create-phone-call. Sending it is silently
+                # ignored and the call runs whatever agent is BOUND TO THE NUMBER in the
+                # Retell dashboard. override_agent_id is the only way to pick the agent.
+                "override_agent_id": retell_agent_id,
                 "from_number": VERIFIED_CALLER_ID,
                 "to_number": phone,
                 "direction": "outbound",
@@ -19316,7 +19330,11 @@ def send_retell_sms(to_number, message="", from_number=None, name="", address=""
     The chat agent uses dynamic variables: {{first_name}}, {{address}}
     """
     to_number = format_phone(to_number)
-    from_number = from_number or HAILEY_PHONE_NUMBER
+    # Texts go from SMS_PHONE_NUMBER, calls from HAILEY_PHONE_NUMBER. These used to be
+    # the same value, but a SIP-trunked number (e.g. a SignalWire 720 for Denver local
+    # presence) carries VOICE ONLY - Retell cannot text from it. Keeping them separate
+    # lets calls move to the trunked number while texts stay on a Retell-native number.
+    from_number = from_number or SMS_PHONE_NUMBER or HAILEY_PHONE_NUMBER
     first_name = name.split()[0] if name else "there"
     
     print(f"📱 Sending Retell SMS...")

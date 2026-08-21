@@ -1,118 +1,116 @@
-# voicelab — why that test didn't dial
+# voicelab — routing is fixed; the failure moved downstream
 
-Your log shows the new code **is** live (the outbound number printed as `+17027105676`).
-Two things blocked the call, and one of them was my miss.
-
----
-
-## 1. The 401 — `RETELL_API_KEY` isn't set in Railway
-
-```
-❌ Retell SMS failed: 401
-   {"message":"The authorization header must be in the format of 'Bearer <YOUR-API-KEY>'"}
-   📡 Retell: 401
-```
-
-Retell isn't rejecting a *wrong* key — it's saying the header is *malformed*. The code
-sends `Authorization: Bearer {RETELL_API_KEY}`, and with that variable empty the header
-goes out as a bare `Bearer ` with nothing after it. That's the exact failure mode of
-deploying after the hardcoded fallback was removed but before the variable was set.
-
-**Fix:** Railway → your service → Variables → add `RETELL_API_KEY` = your rotated key,
-then redeploy. Nothing else in this file matters until that's set — every call and text
-will 401 regardless of routing.
-
-Verify with the Retell key that's actually live now (if you rotated, use the new one).
-
----
-
-## 2. My miss — a hidden override was forcing solar back to roofing
-
-This is on me. When I made the first pass I fixed the two routing sites in `make_call`,
-but there was a **third** override sitting upstream in the GHL webhook handler that I
-didn't catch:
-
-```python
-agent_type = _cd.get('agent_type') or d.get('agent_type') or 'roofing'
-if agent_type == 'solar':
-    print("⚠️  agent_type 'solar' received but solar agent is disabled - forcing roofing")
-    agent_type = 'roofing'          # <-- stomped whatever GHL sent
-```
-
-Added during the June ToS-block, never removed. It intercepted `solar` **before** routing
-ever ran — so even with GHL fixed and my earlier patch deployed, you'd still have landed
-on the roofing agent. Removed now.
-
-While in there I also fixed a related trap. Your payload sends **`'agent_type': 'Roofing'`**
-— capital R — but every branch compares against exact lowercase `'solar'` / `'roofing'`.
-So had you simply set GHL to `Solar`, it would have missed the solar branch *and* the
-roofing branch and fallen through to the **Paige demo agent** on a live lead, with no
-error. The handler now normalizes with `.strip().lower()`, and the fallback branch logs
-loudly instead of dialing a demo agent in silence.
-
-Verified across the casings GHL actually sends:
-
-| GHL sends | resolves to | agent |
-|---|---|---|
-| `Solar` | `solar` | `agent_51e1e8bbc32e11ce5d2f313d5b` ✅ |
-| `solar` | `solar` | `agent_51e1e8bbc32e11ce5d2f313d5b` ✅ |
-| `Roofing` | `roofing` | `agent_50ac8943...` (Bulldog — correct, separate client) |
-| missing/empty | `solar` | `agent_51e1e8bbc32e11ce5d2f313d5b` ✅ |
-
-I also flipped the default from `roofing` to `solar`, so a payload missing the field
-lands on solar rather than dialing your roofing client's agent.
-
----
-
-## 3. GHL is still sending `Roofing`
-
-```
-'customData': {'action': 'sequence', ..., 'agent_type': 'Roofing'}
-```
-
-Set it to `solar` in **both** webhook workflows. Casing no longer matters after the fix
-above, but the *value* still has to change.
-
-Also still missing from `customData`: **`state`**. Your payload has `location.state: 'CO'`
-(that's your business address, not the lead's) but no lead-level state field. Add
-`state` = Contact.State.
-
-`contact_id` looks correct now — `jrkqQPsQHDuX2VCFVvHT` is a real contact ID, not the
-account owner ID. That one's done.
-
----
-
-## Do these in order
-
-1. **Set `RETELL_API_KEY` in Railway.** Nothing works until this is done.
-2. **Upload the new `voice_app.py`** (override removal + normalization).
-3. **GHL, both workflows:** `agent_type` → `solar`, add `state` → Contact.State.
-4. **Clear the stuck sequence** — your test contact now has an active row:
-   `python3 clear_stuck_sequence.py --phone 7026721251 --apply`
-5. **Re-test.** You want to see exactly this:
+## ✅ What's now working
 
 ```
 📥 agent_type resolved: 'solar'
 🔍 AGENT TYPE RECEIVED: 'solar'
 ✅ USING SOLAR CLIENT AGENT: agent_51e1e8bbc32e11ce5d2f313d5b
-✅ USING HAILEY NUMBER: +17027105676
-📡 Retell: 201
+📞 [OUTBOUND] Calling +17026721251 for All Access (Solar)...
+   📡 Retell: 201
+   ✅ Call initiated: call_86d368e9dd27d9901ff4f8eb034
 ```
 
-`📡 Retell: 201` is the one that means a call actually left. `401` = step 1 not done.
-If you see `⚠️⚠️ UNRECOGNIZED agent_type`, GHL is sending something unexpected — the
-line prints the value it got.
+Solar agent, correct ID, correct company, `201`, real call_id. The routing work is
+done — the override is gone, `RETELL_API_KEY` is set, GHL is sending `solar`.
+
+**But 201 does not mean the phone rang.** It means Retell accepted the request and
+queued it. Whether it actually dialed is recorded on the call object afterwards. That's
+the next thing to look at, and it's a Retell/carrier question now, not a code question.
 
 ---
 
-## Still outstanding from before
+## 🔍 Step 1 — Ask Retell what happened to that call
 
-**Rotate the exposed Twilio token and Retell key** if you haven't. They were public in
-`LEADNLLC/voice-ai` and remain in commit `3031a57` regardless of the current file.
+```bash
+export RETELL_API_KEY=your_key
+python3 retell_diagnose.py --call call_86d368e9dd27d9901ff4f8eb034 --number +17027105676
+```
 
-**Check for a Railway volume.** `DB_PATH` is `~/voice.db` — SQLite on container disk.
-With no volume mounted, every deploy wipes leads, call history, and sequences. You're
-about to deploy again.
+Read-only. It pulls `call_status` + `disconnection_reason` and interprets them, then
+checks whether `+17027105676` is actually on the account and has an outbound agent bound.
 
-**Denver local presence.** You're dialing Denver leads from a Vegas number. The 303/720
-slots are stubbed and commented in `RETELL_PHONE_POOL` and `RETELL_STATE_FALLBACK`.
+What the answer will tell you:
+
+| What comes back | What it means |
+|---|---|
+| `dial_failed` | Carrier refused the dial. Almost always the FROM number — not provisioned, or no outbound agent attached. |
+| `marked_as_spam` / `scam_detected` | Carrier suppressed it silently. **This is the classic "201 but no ring."** |
+| `dial_no_answer` | It genuinely rang. If your handset never lit up, the carrier dropped it late. |
+| still `registered` after a minute | It never dialed at all. Look at the number. |
+| `ended` with a duration | It connected — different problem entirely. |
+
+---
+
+## 🚩 Step 2 — The SMS 404 is a real clue
+
+```
+❌ Retell SMS failed: 404
+   {"message":"Item not found in a2p-application with phoneNumber=+17027105676"}
+```
+
+`+17027105676` has no A2P 10DLC registration in Retell. Strictly, A2P governs **SMS
+only** — its absence does not block voice, so this doesn't by itself explain the missing
+ring. But it does tell you the number was recently added and isn't fully provisioned,
+which makes a voice-side provisioning gap plausible too. The `--numbers` check above
+distinguishes the two: if the number isn't listed, that's your answer for both.
+
+To fix texting, register the number for A2P 10DLC in Retell (Phone Numbers → the number
+→ A2P / 10DLC registration). It's a carrier process — typically a few business days.
+Until it clears, the NEPQ intro text will keep 404ing. Calls don't depend on it.
+
+---
+
+## 🚩 Step 3 — `state` is being sent as `"solar"`
+
+```
+'customData': {..., 'agent_type': 'solar', 'state': 'solar'}
+```
+
+The `state` field got the agent type copied into it. It should be the lead's state —
+`CO`. This is the same bug as the original hardcoded `"roofing"`, just with a new value.
+In GHL, set `state` = **Contact.State**.
+
+The `CO` you see elsewhere in the payload is under `location` — that's your Littleton
+business address, not the lead's.
+
+Also `'address': 'undefined'` — a literal string, meaning the GHL merge field didn't
+resolve. The parsed line confirms it arrived empty. That's why Hailey's opener falls back
+to the no-address variant.
+
+---
+
+## Note on the second webhook
+
+Two different contacts appear in that log: `InUW9teQILIbiXwXuHos` (the one that got the
+201) and `TN1FNDkvwYw5R6NO6tJZ` a minute later, with `tags: ''` — no `english` tag. Both
+are the same phone. The second almost certainly hit the active-sequence guard from the
+first, which is expected behavior, not a bug. Clear it between tests:
+
+```bash
+python3 clear_stuck_sequence.py --phone 7026721251 --apply
+```
+
+---
+
+## Most likely answer, stated plainly
+
+A brand-new 702 number, with no traffic history and no completed registration, dialing a
+702 cell. Carrier spam filtering suppresses exactly this pattern, and it presents exactly
+this way: API says success, handset never rings, no missed call.
+
+If `retell_diagnose.py` comes back `marked_as_spam` or a clean `dial_no_answer`, that's
+confirmed, and the fix is the thing I flagged at the very start — **get a 303 or 720
+Denver number** and complete its registration. You need it for answer rates on Denver
+leads anyway; this would just make it urgent rather than optimizational. The pool slots
+are already stubbed in `RETELL_PHONE_POOL` and `RETELL_STATE_FALLBACK`.
+
+Run the diagnostic and paste the output — I'll read it with you.
+
+---
+
+## Still outstanding
+
+- **Rotate the exposed Twilio token** if you haven't. Still public in commit `3031a57`.
+- **Railway volume.** `DB_PATH` is `~/voice.db` on container disk. No volume = every
+  deploy wipes leads, calls, and sequences.

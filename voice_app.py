@@ -30,18 +30,30 @@ RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railw
 # ═══════════════════════════════════════════════════════════════════════════════
 # 🔥 CALLS AND TEXTS NOW COME FROM DIFFERENT NUMBERS. This is deliberate.
 #
-#   VOICE  +17206864625  SignalWire 720 (Denver), SIP-trunked into Retell.
-#                        Local presence for Denver leads. VOICE ONLY - Retell
-#                        cannot send SMS over a SIP trunk.
-#   SMS    +17027105676  Retell-native 702. Needs A2P 10DLC registration before
-#                        texts will send (currently returns 404).
+#   VOICE  +17206054003  Denver 720, bought INSIDE Retell (Retell-native).
+#   SMS    +17206054003  Same number. Needs A2P 10DLC registration before texts
+#                        will send - until then send_retell_sms returns 404.
+#
+# Retell-native means no SIP trunk: Retell owns the number end to end, so it can
+# carry BOTH calls and texts. Set these to different values only if you are
+# deliberately splitting channels across numbers.
+#
+# History, so nobody repeats it:
+#   +14012989927  Rhode Island. Wrong region for Denver leads.
+#   +17027105676  Las Vegas, Retell-native. Dialed fine, wrong area code.
+#   +17206864625  SignalWire 720, SIP-trunked. EVERY CALL FAILED:
+#                 SIP 404 invalid_destination - "INVITE failed: 404: Domain unavailable"
+#                 SignalWire needs a Domain App (not a SIP Credential) to accept
+#                 external INVITEs, and that is not exposed in their dashboard.
+#                 DO NOT point voice at a SIP-trunked number again without a test
+#                 call that actually rings.
 #
 # Do NOT collapse these back into one value unless both live on the same
 # Retell-native number.
 # ═══════════════════════════════════════════════════════════════════════════════
-HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17206864625')   # VOICE
-RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206864625')   # VOICE
-SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17027105676')         # SMS only
+HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17206054003')   # VOICE - Denver, Retell-native
+RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206054003')   # VOICE - Denver, Retell-native
+SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17206054003')         # SMS - same number (A2P pending)
 
 # Text before call settings (NEPQ style)
 TEXT_BEFORE_CALL = os.environ.get('TEXT_BEFORE_CALL', 'true').lower() == 'true'
@@ -70,11 +82,9 @@ RETELL_PHONE_POOL = {
     '725': '+17027105676',  # Las Vegas NV
     '775': '+17027105676',  # Reno NV
 
-    # Denver local presence - SignalWire number, connected to Retell via SIP trunking.
-    # VOICE ONLY: Retell cannot send SMS over a SIP trunk, so texts stay on
-    # SMS_PHONE_NUMBER (a Retell-native number).
-    '303': '+17206864625',  # Denver CO
-    '720': '+17206864625',  # Denver CO
+    # Denver local presence - Retell-native, no trunk.
+    '303': '+17206054003',  # Denver CO
+    '720': '+17206054003',  # Denver CO
 
     # Add more numbers as you buy them:
     # '480': '+14805551234',  # Phoenix AZ
@@ -90,14 +100,14 @@ RETELL_PHONE_POOL = {
 # State-level fallbacks (if no exact area code match)
 RETELL_STATE_FALLBACK = {
     'NV': '+17027105676',  # Nevada → Hailey main number
-    'CO': '+17206864625',  # Colorado → Denver (SignalWire, SIP-trunked into Retell)
+    'CO': '+17206054003',  # Colorado → Denver (Retell-native)
     # 'AZ': '+14805551234',  # Arizona → Phoenix
     # 'CA': '+13105551234',  # California → LA
     # 'HI': '+18085551234',  # Hawaii
 }
 
 # Default fallback number (used when no match found) - SMS enabled!
-RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206864625')  # VOICE
+RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206054003')  # VOICE - Denver, Retell-native
 
 def get_local_presence_number(lead_phone, lead_state=None):
     """
@@ -199,8 +209,12 @@ OWNER_PHONE = os.environ.get('OWNER_PHONE', '+17023240525')
 # appointment alert destination doesn't silently re-route every other owner alert.
 APPT_ALERT_PHONE = os.environ.get('APPT_ALERT_PHONE', '+17026721251')
 
+# Call IDs whose post-call GHL sync has already run. Retell delivers call_ended and
+# call_analyzed, and retries both, so without this every call syncs 3+ times.
+_SYNCED_CALL_IDS = set()
+
 # Printed at startup so you can tell from the Railway logs whether a deploy took.
-BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 override_agent_id + denver-720')
+BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 denver-720-native +17206054003')
 
 # ============ CALL SEQUENCE HYGIENE ============
 # An 'active' sequence older than this is treated as abandoned and auto-cleared rather
@@ -6094,7 +6108,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
     elif agent_type == 'roofing':
         # ROOFING CLIENT - Bulldog Roofing Hailey (NEPQ v2.3)
         retell_agent_id = 'agent_50ac8943b545a778304e160e93'  # ROOFING AGENT - HAILEY
-        from_number = HAILEY_PHONE_NUMBER  # +17206864625 - Denver 720 via SignalWire trunk
+        from_number = HAILEY_PHONE_NUMBER  # Retell-native outbound number
         print(f"\U0001F525 HAILEY ROOFING (SMS ENABLED): {from_number}")
         call_type = "outbound"
         call_purpose = "appointment_setting"
@@ -6129,7 +6143,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
         print(f"⚠️⚠️ Expected one of: 'roofing', 'solar', or an 'inbound_*' type. Check the GHL payload.")
         retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # Paige OUTBOUND (Demo)
         # 🔥 HAILEY LAS VEGAS NUMBER - Direct Retell
-        from_number = HAILEY_PHONE_NUMBER  # +17206864625 - Denver 720 via SignalWire trunk
+        from_number = HAILEY_PHONE_NUMBER  # Retell-native outbound number
         print(f"🔥 HAILEY LAS VEGAS: {from_number}")
         call_type = "outbound"
         call_purpose = "appointment_setting"
@@ -16654,7 +16668,7 @@ nav a:hover{{color:var(--text)}}
                 all_calls = [dict(row) for row in c.fetchall()]
                 
                 # Outbound number performance (fatigue detection)
-                outbound_number = RETELL_PHONE_NUMBER  # +17206864625 (Denver voice)
+                outbound_number = RETELL_PHONE_NUMBER  # Retell-native outbound number
                 c.execute('''SELECT COUNT(*) as total, 
                     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as answered,
                     SUM(CASE WHEN status IN ('no_answer', 'short_call', 'voicemail', 'busy') THEN 1 ELSE 0 END) as no_answer
@@ -18327,12 +18341,21 @@ Let's close some deals! 🚀"""
                     conn = sqlite3.connect(DB_PATH)
                     c = conn.cursor()
                     
-                    # Try to add cost column if it doesn't exist
-                    try:
-                        c.execute('ALTER TABLE call_log ADD COLUMN cost REAL DEFAULT 0')
-                        conn.commit()
-                    except:
-                        pass  # Column already exists
+                    # Ensure the columns this handler writes actually exist. 'updated_at'
+                    # was missing, so the UPDATE threw on every single webhook and fell
+                    # back to an insert that silently dropped cost and transcript.
+                    for _col, _ddl in (
+                        ('cost', 'REAL DEFAULT 0'),
+                        ('updated_at', 'TIMESTAMP'),
+                        ('transcript', 'TEXT'),
+                        ('recording_url', 'TEXT'),
+                    ):
+                        try:
+                            c.execute(f'ALTER TABLE call_log ADD COLUMN {_col} {_ddl}')
+                            conn.commit()
+                            print(f"🛠️ call_log: added missing column '{_col}'")
+                        except Exception:
+                            pass  # already exists
                     
                     # Update call_log if exists
                     try:
@@ -18933,6 +18956,23 @@ def retell_webhook():
         # Only process when call ends
         if event not in ["call_ended", "call_analyzed"]:
             return jsonify({"status": "ignored", "event": event}), 200
+
+        # ── Idempotency ──────────────────────────────────────────────────────
+        # Retell sends call_ended AND call_analyzed, and retries each one when a
+        # 200 doesn't come back fast enough (its webhook timeout is 5s and the GHL
+        # round-trips below take longer). Every delivery used to re-run the whole
+        # sync, which inflated the call-attempt counter (Attempts=1,2,3 for ONE
+        # call) and could trip max_calls early. Sync once per call_id.
+        _cid = call_data.get('call_id', '')
+        if _cid:
+            if _cid in _SYNCED_CALL_IDS:
+                print(f"[RETELL WEBHOOK] ↩️ {event} for {_cid} already synced - acknowledging without reprocessing")
+                return jsonify({"status": "duplicate", "call_id": _cid}), 200
+            _SYNCED_CALL_IDS.add(_cid)
+            # Bound the set so a long-lived process doesn't grow forever
+            if len(_SYNCED_CALL_IDS) > 5000:
+                for _old in list(_SYNCED_CALL_IDS)[:1000]:
+                    _SYNCED_CALL_IDS.discard(_old)
         
         # ----- GET CONTACT ID -----
         metadata = call_data.get("metadata", {})

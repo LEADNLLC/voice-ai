@@ -1,7 +1,7 @@
 From 78a61824389b5b6d175bb04cd27ae4407690f40a Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:19:00 +0000
-Subject: [PATCH 01/12] Route solar to new Retell agent, move outbound to
+Subject: [PATCH 01/16] Route solar to new Retell agent, move outbound to
  +17027105676, remove committed secrets
 
 ---
@@ -323,7 +323,7 @@ index 1ea393b..497b657 100644
 From c07ec35ae2728d1f59312031fa2feaf54fbc9fa5 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:31:05 +0000
-Subject: [PATCH 02/12] Remove solar->roofing webhook override, normalize
+Subject: [PATCH 02/16] Remove solar->roofing webhook override, normalize
  agent_type casing, loud unknown-agent fallback
 
 ---
@@ -375,7 +375,7 @@ index 497b657..dfec52f 100644
 From e3199bed8e2fad32b47494635c8073b88384389b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:52:38 +0000
-Subject: [PATCH 03/12] Pull address/state/phone from GHL contact record; scrub
+Subject: [PATCH 03/16] Pull address/state/phone from GHL contact record; scrub
  unresolved merge fields
 
 ---
@@ -540,7 +540,7 @@ index dfec52f..3f0a898 100644
 From 478b606c3449e553310f5c9fceb768580f0edf1d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:07:47 +0000
-Subject: [PATCH 04/12] Resolve booking calendar by name, DST-aware timezone
+Subject: [PATCH 04/16] Resolve booking calendar by name, DST-aware timezone
  offsets, attach recording to appointment
 
 ---
@@ -787,7 +787,7 @@ index 3f0a898..51f67f0 100644
 From 36845522c9edf14bf9bd90ceaca4f8ca799a6f86 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:08:25 +0000
-Subject: [PATCH 05/12] Default appointment timezone to America/Denver
+Subject: [PATCH 05/16] Default appointment timezone to America/Denver
  (homeowner local time)
 
 ---
@@ -836,7 +836,7 @@ index 51f67f0..2e127c1 100644
 From 94d3724ed27b3ea40313b0f83c51b19dfa16004c Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:17:12 +0000
-Subject: [PATCH 06/12] Fix name matching for punctuated GHL names, move
+Subject: [PATCH 06/16] Fix name matching for punctuated GHL names, move
  opportunity to Appointment Set, text owner on booking
 
 ---
@@ -1268,7 +1268,7 @@ index 2e127c1..24d7ba1 100644
 From ff0856260980dbb134f96e04a149a67ed5938d22 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:22:49 +0000
-Subject: [PATCH 07/12] Use override_agent_id: agent_id is not a valid
+Subject: [PATCH 07/16] Use override_agent_id: agent_id is not a valid
  create-phone-call field and was being ignored
 
 ---
@@ -1322,7 +1322,7 @@ index 24d7ba1..afb1744 100644
 From c5875a7a31f0cbefc5c791851756cc9cb830153f Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:25:02 +0000
-Subject: [PATCH 08/12] Decouple SMS sender from call sender; add Denver 720 to
+Subject: [PATCH 08/16] Decouple SMS sender from call sender; add Denver 720 to
  local presence pool
 
 ---
@@ -1409,7 +1409,7 @@ index afb1744..fc06fc7 100644
 From f91bdea8afc0b725ca69b86d6043cf1beb33315a Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:44:37 +0000
-Subject: [PATCH 09/12] Move all voice paths to the Denver 720; SMS stays on
+Subject: [PATCH 09/16] Move all voice paths to the Denver 720; SMS stays on
  the Retell-native 702
 
 ---
@@ -1572,7 +1572,7 @@ index fc06fc7..7049bda 100644
 From 55e4c147c6903942cb7fcecdd41702a1080159d6 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:44:52 +0000
-Subject: [PATCH 10/12] Dedupe number keys in env.example
+Subject: [PATCH 10/16] Dedupe number keys in env.example
 
 ---
  env.example | 5 +----
@@ -1601,7 +1601,7 @@ index 6f76f03..4b6740f 100644
 From c1630ee8e9e12b05efd269e870759bc7770a921d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:58:33 +0000
-Subject: [PATCH 11/12] Auto-supersede stale/obsolete call sequences instead of
+Subject: [PATCH 11/16] Auto-supersede stale/obsolete call sequences instead of
  blocking a phone forever
 
 ---
@@ -1775,7 +1775,7 @@ index 7049bda..9f161ad 100644
 From 09950ff61fff4f434e0804137a5ea3fcdb8147ce Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 22:13:46 +0000
-Subject: [PATCH 12/12] Add boot banner so deploys are verifiable from the logs
+Subject: [PATCH 12/16] Add boot banner so deploys are verifiable from the logs
 
 ---
  voice_app.py | 27 +++++++++++++++++++++++++++
@@ -1827,6 +1827,450 @@ index 9f161ad..3de1cf6 100644
      main()
  """
  =================================================================
+-- 
+2.43.0
+
+
+From 15f8cf1a84258474a130a6b6f5c06dc0a2664e29 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 22:23:30 +0000
+Subject: [PATCH 13/16] Dedupe Retell webhook deliveries; heal missing call_log
+ columns
+
+---
+ voice_app.py | 42 ++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 36 insertions(+), 6 deletions(-)
+
+diff --git a/voice_app.py b/voice_app.py
+index 3de1cf6..ca8fd30 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -199,6 +199,10 @@ OWNER_PHONE = os.environ.get('OWNER_PHONE', '+17023240525')
+ # appointment alert destination doesn't silently re-route every other owner alert.
+ APPT_ALERT_PHONE = os.environ.get('APPT_ALERT_PHONE', '+17026721251')
+ 
++# Call IDs whose post-call GHL sync has already run. Retell delivers call_ended and
++# call_analyzed, and retries both, so without this every call syncs 3+ times.
++_SYNCED_CALL_IDS = set()
++
+ # Printed at startup so you can tell from the Railway logs whether a deploy took.
+ BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 override_agent_id + denver-720')
+ 
+@@ -18327,12 +18331,21 @@ Let's close some deals! 🚀"""
+                     conn = sqlite3.connect(DB_PATH)
+                     c = conn.cursor()
+                     
+-                    # Try to add cost column if it doesn't exist
+-                    try:
+-                        c.execute('ALTER TABLE call_log ADD COLUMN cost REAL DEFAULT 0')
+-                        conn.commit()
+-                    except:
+-                        pass  # Column already exists
++                    # Ensure the columns this handler writes actually exist. 'updated_at'
++                    # was missing, so the UPDATE threw on every single webhook and fell
++                    # back to an insert that silently dropped cost and transcript.
++                    for _col, _ddl in (
++                        ('cost', 'REAL DEFAULT 0'),
++                        ('updated_at', 'TIMESTAMP'),
++                        ('transcript', 'TEXT'),
++                        ('recording_url', 'TEXT'),
++                    ):
++                        try:
++                            c.execute(f'ALTER TABLE call_log ADD COLUMN {_col} {_ddl}')
++                            conn.commit()
++                            print(f"🛠️ call_log: added missing column '{_col}'")
++                        except Exception:
++                            pass  # already exists
+                     
+                     # Update call_log if exists
+                     try:
+@@ -18933,6 +18946,23 @@ def retell_webhook():
+         # Only process when call ends
+         if event not in ["call_ended", "call_analyzed"]:
+             return jsonify({"status": "ignored", "event": event}), 200
++
++        # ── Idempotency ──────────────────────────────────────────────────────
++        # Retell sends call_ended AND call_analyzed, and retries each one when a
++        # 200 doesn't come back fast enough (its webhook timeout is 5s and the GHL
++        # round-trips below take longer). Every delivery used to re-run the whole
++        # sync, which inflated the call-attempt counter (Attempts=1,2,3 for ONE
++        # call) and could trip max_calls early. Sync once per call_id.
++        _cid = call_data.get('call_id', '')
++        if _cid:
++            if _cid in _SYNCED_CALL_IDS:
++                print(f"[RETELL WEBHOOK] ↩️ {event} for {_cid} already synced - acknowledging without reprocessing")
++                return jsonify({"status": "duplicate", "call_id": _cid}), 200
++            _SYNCED_CALL_IDS.add(_cid)
++            # Bound the set so a long-lived process doesn't grow forever
++            if len(_SYNCED_CALL_IDS) > 5000:
++                for _old in list(_SYNCED_CALL_IDS)[:1000]:
++                    _SYNCED_CALL_IDS.discard(_old)
+         
+         # ----- GET CONTACT ID -----
+         metadata = call_data.get("metadata", {})
+-- 
+2.43.0
+
+
+From cd1dde0e6424082e44e99e023c26e9f917447132 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 22:28:39 +0000
+Subject: [PATCH 14/16] Revert voice to the Retell-native number; park the
+ SignalWire trunk
+
+---
+ env.example  | 11 ++++++-----
+ voice_app.py | 39 ++++++++++++++++++++++-----------------
+ 2 files changed, 28 insertions(+), 22 deletions(-)
+
+diff --git a/env.example b/env.example
+index 1a930d5..7569bac 100644
+--- a/env.example
++++ b/env.example
+@@ -60,11 +60,12 @@ APPT_ALERT_PHONE=+17026721251
+ 
+ # ── Numbers ──────────────────────────────────────────────────────────────────
+ # Calls go out from HAILEY_PHONE_NUMBER; texts from SMS_PHONE_NUMBER.
+-# Keep them SEPARATE: a SIP-trunked number is voice-only, Retell cannot text from it.
+-#   voice: SignalWire +17206864625 (Denver 720), SIP-trunked into Retell
+-#   sms:   Retell-native +17027105676 (needs A2P 10DLC before texts send)
+-HAILEY_PHONE_NUMBER=+17206864625
+-RETELL_PHONE_NUMBER=+17206864625
++# Both are the Retell-native 702 today - this is the WORKING configuration.
++#
++# The SignalWire Denver 720 (+17206864625) is parked: SIP-trunked but every INVITE
++# returns "404 Domain unavailable". Do not put it back here until a test call rings.
++HAILEY_PHONE_NUMBER=+17027105676
++RETELL_PHONE_NUMBER=+17027105676
+ SMS_PHONE_NUMBER=+17027105676
+ 
+ # ── Call sequence hygiene ────────────────────────────────────────────────────
+diff --git a/voice_app.py b/voice_app.py
+index ca8fd30..c422c1c 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -30,17 +30,22 @@ RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railw
+ # ═══════════════════════════════════════════════════════════════════════════════
+ # 🔥 CALLS AND TEXTS NOW COME FROM DIFFERENT NUMBERS. This is deliberate.
+ #
+-#   VOICE  +17206864625  SignalWire 720 (Denver), SIP-trunked into Retell.
+-#                        Local presence for Denver leads. VOICE ONLY - Retell
+-#                        cannot send SMS over a SIP trunk.
+-#   SMS    +17027105676  Retell-native 702. Needs A2P 10DLC registration before
+-#                        texts will send (currently returns 404).
++#   VOICE  +17027105676  Retell-native 702. WORKING - dials normally.
++#   SMS    +17027105676  Same number. Needs A2P 10DLC before texts send (404 today).
++#
++# ⚠️ REVERTED 2026-08-21: the SignalWire 720 (+17206864625) was SIP-trunked in for
++# Denver local presence and every call died with:
++#     SIP 404 invalid_destination - "INVITE failed: 404: Domain unavailable"
++# Termination URI, credentials and DNS all checked out; SignalWire's proxy simply
++# would not serve that domain for external INVITEs. Parked until SignalWire support
++# confirms the right termination target. DO NOT point voice at the 720 again until
++# a test call actually rings.
+ #
+ # Do NOT collapse these back into one value unless both live on the same
+ # Retell-native number.
+ # ═══════════════════════════════════════════════════════════════════════════════
+-HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17206864625')   # VOICE
+-RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206864625')   # VOICE
++HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17027105676')   # VOICE - Retell-native
++RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17027105676')   # VOICE - Retell-native
+ SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17027105676')         # SMS only
+ 
+ # Text before call settings (NEPQ style)
+@@ -70,11 +75,11 @@ RETELL_PHONE_POOL = {
+     '725': '+17027105676',  # Las Vegas NV
+     '775': '+17027105676',  # Reno NV
+ 
+-    # Denver local presence - SignalWire number, connected to Retell via SIP trunking.
+-    # VOICE ONLY: Retell cannot send SMS over a SIP trunk, so texts stay on
+-    # SMS_PHONE_NUMBER (a Retell-native number).
+-    '303': '+17206864625',  # Denver CO
+-    '720': '+17206864625',  # Denver CO
++    # Denver local presence - PARKED. The SignalWire 720 is SIP-trunked but every
++    # INVITE returns 404 Domain unavailable, so routing Denver leads to it would
++    # silently kill those calls. Re-enable only after a test call rings.
++    # '303': '+17206864625',  # Denver CO - SignalWire (trunk broken)
++    # '720': '+17206864625',  # Denver CO - SignalWire (trunk broken)
+ 
+     # Add more numbers as you buy them:
+     # '480': '+14805551234',  # Phoenix AZ
+@@ -90,14 +95,14 @@ RETELL_PHONE_POOL = {
+ # State-level fallbacks (if no exact area code match)
+ RETELL_STATE_FALLBACK = {
+     'NV': '+17027105676',  # Nevada → Hailey main number
+-    'CO': '+17206864625',  # Colorado → Denver (SignalWire, SIP-trunked into Retell)
++    # 'CO': '+17206864625',  # PARKED - SignalWire trunk returns 404 Domain unavailable
+     # 'AZ': '+14805551234',  # Arizona → Phoenix
+     # 'CA': '+13105551234',  # California → LA
+     # 'HI': '+18085551234',  # Hawaii
+ }
+ 
+ # Default fallback number (used when no match found) - SMS enabled!
+-RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206864625')  # VOICE
++RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17027105676')  # VOICE - Retell-native
+ 
+ def get_local_presence_number(lead_phone, lead_state=None):
+     """
+@@ -6098,7 +6103,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
+     elif agent_type == 'roofing':
+         # ROOFING CLIENT - Bulldog Roofing Hailey (NEPQ v2.3)
+         retell_agent_id = 'agent_50ac8943b545a778304e160e93'  # ROOFING AGENT - HAILEY
+-        from_number = HAILEY_PHONE_NUMBER  # +17206864625 - Denver 720 via SignalWire trunk
++        from_number = HAILEY_PHONE_NUMBER  # Retell-native outbound number
+         print(f"\U0001F525 HAILEY ROOFING (SMS ENABLED): {from_number}")
+         call_type = "outbound"
+         call_purpose = "appointment_setting"
+@@ -6133,7 +6138,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
+         print(f"⚠️⚠️ Expected one of: 'roofing', 'solar', or an 'inbound_*' type. Check the GHL payload.")
+         retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # Paige OUTBOUND (Demo)
+         # 🔥 HAILEY LAS VEGAS NUMBER - Direct Retell
+-        from_number = HAILEY_PHONE_NUMBER  # +17206864625 - Denver 720 via SignalWire trunk
++        from_number = HAILEY_PHONE_NUMBER  # Retell-native outbound number
+         print(f"🔥 HAILEY LAS VEGAS: {from_number}")
+         call_type = "outbound"
+         call_purpose = "appointment_setting"
+@@ -16658,7 +16663,7 @@ nav a:hover{{color:var(--text)}}
+                 all_calls = [dict(row) for row in c.fetchall()]
+                 
+                 # Outbound number performance (fatigue detection)
+-                outbound_number = RETELL_PHONE_NUMBER  # +17206864625 (Denver voice)
++                outbound_number = RETELL_PHONE_NUMBER  # Retell-native outbound number
+                 c.execute('''SELECT COUNT(*) as total, 
+                     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as answered,
+                     SUM(CASE WHEN status IN ('no_answer', 'short_call', 'voicemail', 'busy') THEN 1 ELSE 0 END) as no_answer
+-- 
+2.43.0
+
+
+From e688709883f36df7b58e6217138556d685cd04ff Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 23:06:19 +0000
+Subject: [PATCH 15/16] Switch to Retell-native Denver number +17208215937 for
+ voice and SMS
+
+---
+ env.example  | 14 +++++++-------
+ voice_app.py | 45 +++++++++++++++++++++++++--------------------
+ 2 files changed, 32 insertions(+), 27 deletions(-)
+
+diff --git a/env.example b/env.example
+index 7569bac..5413535 100644
+--- a/env.example
++++ b/env.example
+@@ -59,14 +59,14 @@ GHL_APPT_STAGE_NAME=Appointment Set
+ APPT_ALERT_PHONE=+17026721251
+ 
+ # ── Numbers ──────────────────────────────────────────────────────────────────
+-# Calls go out from HAILEY_PHONE_NUMBER; texts from SMS_PHONE_NUMBER.
+-# Both are the Retell-native 702 today - this is the WORKING configuration.
++# +17208215937 - Denver 720, bought inside Retell. Retell-native: no SIP trunk, so
++# it carries both calls and texts. Texts need A2P 10DLC registration first.
+ #
+-# The SignalWire Denver 720 (+17206864625) is parked: SIP-trunked but every INVITE
+-# returns "404 Domain unavailable". Do not put it back here until a test call rings.
+-HAILEY_PHONE_NUMBER=+17027105676
+-RETELL_PHONE_NUMBER=+17027105676
+-SMS_PHONE_NUMBER=+17027105676
++# Do NOT point these at a SIP-trunked number without a test call that rings - the
++# SignalWire 720 (+17206864625) failed every call with 404 Domain unavailable.
++HAILEY_PHONE_NUMBER=+17208215937
++RETELL_PHONE_NUMBER=+17208215937
++SMS_PHONE_NUMBER=+17208215937
+ 
+ # ── Call sequence hygiene ────────────────────────────────────────────────────
+ # Active sequences older than this are auto-cleared instead of blocking forever.
+diff --git a/voice_app.py b/voice_app.py
+index c422c1c..a402153 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -30,23 +30,30 @@ RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railw
+ # ═══════════════════════════════════════════════════════════════════════════════
+ # 🔥 CALLS AND TEXTS NOW COME FROM DIFFERENT NUMBERS. This is deliberate.
+ #
+-#   VOICE  +17027105676  Retell-native 702. WORKING - dials normally.
+-#   SMS    +17027105676  Same number. Needs A2P 10DLC before texts send (404 today).
++#   VOICE  +17208215937  Denver 720, bought INSIDE Retell (Retell-native).
++#   SMS    +17208215937  Same number. Needs A2P 10DLC registration before texts
++#                        will send - until then send_retell_sms returns 404.
+ #
+-# ⚠️ REVERTED 2026-08-21: the SignalWire 720 (+17206864625) was SIP-trunked in for
+-# Denver local presence and every call died with:
+-#     SIP 404 invalid_destination - "INVITE failed: 404: Domain unavailable"
+-# Termination URI, credentials and DNS all checked out; SignalWire's proxy simply
+-# would not serve that domain for external INVITEs. Parked until SignalWire support
+-# confirms the right termination target. DO NOT point voice at the 720 again until
+-# a test call actually rings.
++# Retell-native means no SIP trunk: Retell owns the number end to end, so it can
++# carry BOTH calls and texts. Set these to different values only if you are
++# deliberately splitting channels across numbers.
++#
++# History, so nobody repeats it:
++#   +14012989927  Rhode Island. Wrong region for Denver leads.
++#   +17027105676  Las Vegas, Retell-native. Dialed fine, wrong area code.
++#   +17206864625  SignalWire 720, SIP-trunked. EVERY CALL FAILED:
++#                 SIP 404 invalid_destination - "INVITE failed: 404: Domain unavailable"
++#                 SignalWire needs a Domain App (not a SIP Credential) to accept
++#                 external INVITEs, and that is not exposed in their dashboard.
++#                 DO NOT point voice at a SIP-trunked number again without a test
++#                 call that actually rings.
+ #
+ # Do NOT collapse these back into one value unless both live on the same
+ # Retell-native number.
+ # ═══════════════════════════════════════════════════════════════════════════════
+-HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17027105676')   # VOICE - Retell-native
+-RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17027105676')   # VOICE - Retell-native
+-SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17027105676')         # SMS only
++HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17208215937')   # VOICE - Denver, Retell-native
++RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17208215937')   # VOICE - Denver, Retell-native
++SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17208215937')         # SMS - same number (A2P pending)
+ 
+ # Text before call settings (NEPQ style)
+ TEXT_BEFORE_CALL = os.environ.get('TEXT_BEFORE_CALL', 'true').lower() == 'true'
+@@ -75,11 +82,9 @@ RETELL_PHONE_POOL = {
+     '725': '+17027105676',  # Las Vegas NV
+     '775': '+17027105676',  # Reno NV
+ 
+-    # Denver local presence - PARKED. The SignalWire 720 is SIP-trunked but every
+-    # INVITE returns 404 Domain unavailable, so routing Denver leads to it would
+-    # silently kill those calls. Re-enable only after a test call rings.
+-    # '303': '+17206864625',  # Denver CO - SignalWire (trunk broken)
+-    # '720': '+17206864625',  # Denver CO - SignalWire (trunk broken)
++    # Denver local presence - Retell-native, no trunk.
++    '303': '+17208215937',  # Denver CO
++    '720': '+17208215937',  # Denver CO
+ 
+     # Add more numbers as you buy them:
+     # '480': '+14805551234',  # Phoenix AZ
+@@ -95,14 +100,14 @@ RETELL_PHONE_POOL = {
+ # State-level fallbacks (if no exact area code match)
+ RETELL_STATE_FALLBACK = {
+     'NV': '+17027105676',  # Nevada → Hailey main number
+-    # 'CO': '+17206864625',  # PARKED - SignalWire trunk returns 404 Domain unavailable
++    'CO': '+17208215937',  # Colorado → Denver (Retell-native)
+     # 'AZ': '+14805551234',  # Arizona → Phoenix
+     # 'CA': '+13105551234',  # California → LA
+     # 'HI': '+18085551234',  # Hawaii
+ }
+ 
+ # Default fallback number (used when no match found) - SMS enabled!
+-RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17027105676')  # VOICE - Retell-native
++RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17208215937')  # VOICE - Denver, Retell-native
+ 
+ def get_local_presence_number(lead_phone, lead_state=None):
+     """
+@@ -209,7 +214,7 @@ APPT_ALERT_PHONE = os.environ.get('APPT_ALERT_PHONE', '+17026721251')
+ _SYNCED_CALL_IDS = set()
+ 
+ # Printed at startup so you can tell from the Railway logs whether a deploy took.
+-BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 override_agent_id + denver-720')
++BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 denver-720-native +17208215937')
+ 
+ # ============ CALL SEQUENCE HYGIENE ============
+ # An 'active' sequence older than this is treated as abandoned and auto-cleared rather
+-- 
+2.43.0
+
+
+From d7cf46d3f13255a822cfa4593bddc579dcee62d3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 23:08:31 +0000
+Subject: [PATCH 16/16] Correct Denver number to +17206054003
+
+---
+ env.example  |  8 ++++----
+ voice_app.py | 20 ++++++++++----------
+ 2 files changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/env.example b/env.example
+index 5413535..8b353d0 100644
+--- a/env.example
++++ b/env.example
+@@ -59,14 +59,14 @@ GHL_APPT_STAGE_NAME=Appointment Set
+ APPT_ALERT_PHONE=+17026721251
+ 
+ # ── Numbers ──────────────────────────────────────────────────────────────────
+-# +17208215937 - Denver 720, bought inside Retell. Retell-native: no SIP trunk, so
++# +17206054003 - Denver 720, bought inside Retell. Retell-native: no SIP trunk, so
+ # it carries both calls and texts. Texts need A2P 10DLC registration first.
+ #
+ # Do NOT point these at a SIP-trunked number without a test call that rings - the
+ # SignalWire 720 (+17206864625) failed every call with 404 Domain unavailable.
+-HAILEY_PHONE_NUMBER=+17208215937
+-RETELL_PHONE_NUMBER=+17208215937
+-SMS_PHONE_NUMBER=+17208215937
++HAILEY_PHONE_NUMBER=+17206054003
++RETELL_PHONE_NUMBER=+17206054003
++SMS_PHONE_NUMBER=+17206054003
+ 
+ # ── Call sequence hygiene ────────────────────────────────────────────────────
+ # Active sequences older than this are auto-cleared instead of blocking forever.
+diff --git a/voice_app.py b/voice_app.py
+index a402153..fd0c1b7 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -30,8 +30,8 @@ RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railw
+ # ═══════════════════════════════════════════════════════════════════════════════
+ # 🔥 CALLS AND TEXTS NOW COME FROM DIFFERENT NUMBERS. This is deliberate.
+ #
+-#   VOICE  +17208215937  Denver 720, bought INSIDE Retell (Retell-native).
+-#   SMS    +17208215937  Same number. Needs A2P 10DLC registration before texts
++#   VOICE  +17206054003  Denver 720, bought INSIDE Retell (Retell-native).
++#   SMS    +17206054003  Same number. Needs A2P 10DLC registration before texts
+ #                        will send - until then send_retell_sms returns 404.
+ #
+ # Retell-native means no SIP trunk: Retell owns the number end to end, so it can
+@@ -51,9 +51,9 @@ RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railw
+ # Do NOT collapse these back into one value unless both live on the same
+ # Retell-native number.
+ # ═══════════════════════════════════════════════════════════════════════════════
+-HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17208215937')   # VOICE - Denver, Retell-native
+-RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17208215937')   # VOICE - Denver, Retell-native
+-SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17208215937')         # SMS - same number (A2P pending)
++HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17206054003')   # VOICE - Denver, Retell-native
++RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206054003')   # VOICE - Denver, Retell-native
++SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17206054003')         # SMS - same number (A2P pending)
+ 
+ # Text before call settings (NEPQ style)
+ TEXT_BEFORE_CALL = os.environ.get('TEXT_BEFORE_CALL', 'true').lower() == 'true'
+@@ -83,8 +83,8 @@ RETELL_PHONE_POOL = {
+     '775': '+17027105676',  # Reno NV
+ 
+     # Denver local presence - Retell-native, no trunk.
+-    '303': '+17208215937',  # Denver CO
+-    '720': '+17208215937',  # Denver CO
++    '303': '+17206054003',  # Denver CO
++    '720': '+17206054003',  # Denver CO
+ 
+     # Add more numbers as you buy them:
+     # '480': '+14805551234',  # Phoenix AZ
+@@ -100,14 +100,14 @@ RETELL_PHONE_POOL = {
+ # State-level fallbacks (if no exact area code match)
+ RETELL_STATE_FALLBACK = {
+     'NV': '+17027105676',  # Nevada → Hailey main number
+-    'CO': '+17208215937',  # Colorado → Denver (Retell-native)
++    'CO': '+17206054003',  # Colorado → Denver (Retell-native)
+     # 'AZ': '+14805551234',  # Arizona → Phoenix
+     # 'CA': '+13105551234',  # California → LA
+     # 'HI': '+18085551234',  # Hawaii
+ }
+ 
+ # Default fallback number (used when no match found) - SMS enabled!
+-RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17208215937')  # VOICE - Denver, Retell-native
++RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206054003')  # VOICE - Denver, Retell-native
+ 
+ def get_local_presence_number(lead_phone, lead_state=None):
+     """
+@@ -214,7 +214,7 @@ APPT_ALERT_PHONE = os.environ.get('APPT_ALERT_PHONE', '+17026721251')
+ _SYNCED_CALL_IDS = set()
+ 
+ # Printed at startup so you can tell from the Railway logs whether a deploy took.
+-BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 denver-720-native +17208215937')
++BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 denver-720-native +17206054003')
+ 
+ # ============ CALL SEQUENCE HYGIENE ============
+ # An 'active' sequence older than this is treated as abandoned and auto-cleared rather
 -- 
 2.43.0
 

@@ -28,13 +28,20 @@ RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railw
 # ============ PHONE NUMBER CONFIGURATION ============
 # Primary Retell number for AI calls (Camden, NJ - calls only, no SMS yet)
 # ═══════════════════════════════════════════════════════════════════════════════
-# 🔥 HAILEY OUTBOUND - SAME NUMBER FOR CALLS + TEXTS!
-# +17027105676 (702 Las Vegas) - confirm SMS is enabled on this number in Retell.
-# NOTE: Denver leads see a Vegas area code. A 303/720 number will lift answer rates.
+# 🔥 CALLS AND TEXTS NOW COME FROM DIFFERENT NUMBERS. This is deliberate.
+#
+#   VOICE  +17206864625  SignalWire 720 (Denver), SIP-trunked into Retell.
+#                        Local presence for Denver leads. VOICE ONLY - Retell
+#                        cannot send SMS over a SIP trunk.
+#   SMS    +17027105676  Retell-native 702. Needs A2P 10DLC registration before
+#                        texts will send (currently returns 404).
+#
+# Do NOT collapse these back into one value unless both live on the same
+# Retell-native number.
 # ═══════════════════════════════════════════════════════════════════════════════
-HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17027105676')
-RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17027105676')  # Same number!
-SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17027105676')  # Same number for SMS via Retell!
+HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17206864625')   # VOICE
+RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206864625')   # VOICE
+SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17027105676')         # SMS only
 
 # Text before call settings (NEPQ style)
 TEXT_BEFORE_CALL = os.environ.get('TEXT_BEFORE_CALL', 'true').lower() == 'true'
@@ -90,7 +97,7 @@ RETELL_STATE_FALLBACK = {
 }
 
 # Default fallback number (used when no match found) - SMS enabled!
-RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17027105676')
+RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206864625')  # VOICE
 
 def get_local_presence_number(lead_phone, lead_state=None):
     """
@@ -163,7 +170,7 @@ def get_local_presence_number(lead_phone, lead_state=None):
     return RETELL_DEFAULT_NUMBER
 RETELL_INBOUND_NUMBER = '+17207345479'  # Retell number for INBOUND reception tests
 TWILIO_INBOUND_NUMBER = '+17208189512'  # Twilio number for inbound (Custom Telephony)
-# SMS now via Retell! Using HAILEY_PHONE_NUMBER (+17027105676) - Same number for calls + texts!
+# SMS uses SMS_PHONE_NUMBER (Retell-native); calls use HAILEY_PHONE_NUMBER (SIP-trunked).
 # ====================================================
 TWILIO_SID = os.environ.get('TWILIO_SID', '')
 TWILIO_TOKEN = os.environ.get('TWILIO_TOKEN', '')
@@ -191,6 +198,18 @@ OWNER_PHONE = os.environ.get('OWNER_PHONE', '+17023240525')
 # Where the "appointment set" text goes. Separate from OWNER_PHONE so changing the
 # appointment alert destination doesn't silently re-route every other owner alert.
 APPT_ALERT_PHONE = os.environ.get('APPT_ALERT_PHONE', '+17026721251')
+
+# ============ CALL SEQUENCE HYGIENE ============
+# An 'active' sequence older than this is treated as abandoned and auto-cleared rather
+# than blocking a new one forever. Sequences themselves run max_days=7.
+SEQUENCE_STALE_DAYS = int(os.environ.get('SEQUENCE_STALE_DAYS', '8'))
+# Numbers that may ALWAYS start a fresh sequence. Without this, re-testing from the same
+# cell jams permanently and every test needs a manual database fix.
+TEST_PHONES = {
+    re.sub(r'\D', '', p)[-10:]
+    for p in os.environ.get('TEST_PHONES', '+17026721251').split(',')
+    if p.strip()
+}
 CALENDLY_LINK = os.environ.get('CALENDLY_LINK', 'https://calendly.com/voicelab/demo')
 
 COST_PER_MINUTE_VAPI = 0.05
@@ -4268,17 +4287,82 @@ def get_countdown_info():
         'reason': 'Unknown'
     }
 
+def phone_digits(value):
+    """Last 10 digits, so '+17026721251', '(702) 672-1251' and '7026721251' compare equal."""
+    return re.sub(r'\D', '', value or '')[-10:]
+
+
+def resolve_blocking_sequence(c, phone, ghl_contact_id=None, label=''):
+    """Decide whether an existing active sequence should really block a new one.
+
+    Historically the guard was 'any active row for this phone blocks forever'. Nothing
+    ever expired those rows, so a phone number could be permanently jammed - which is
+    exactly what happens when you re-test with a fresh GHL contact on the same cell.
+
+    An active sequence is SUPERSEDED (cancelled, does not block) when:
+      * the phone is in TEST_PHONES                       - testing must never jam
+      * it belongs to a DIFFERENT ghl_contact_id          - new contact = new intent
+      * it is older than SEQUENCE_STALE_DAYS              - abandoned
+      * it has exhausted max_days or max_calls            - finished but never closed out
+
+    Returns the id of a sequence that legitimately blocks, or None.
+    """
+    target = phone_digits(phone)
+    if not target:
+        return None
+
+    c.execute("""SELECT id, ghl_contact_id, phone, created_at, current_day, max_days,
+                        calls_made, max_calls, last_call_date
+                 FROM call_sequences WHERE status = 'active'""")
+    rows = c.fetchall()
+
+    blocking = None
+    for (sid, seq_contact, seq_phone, created_at, current_day,
+         max_days, calls_made, max_calls, last_call_date) in rows:
+        if phone_digits(seq_phone) != target:
+            continue
+
+        reason = None
+        if target in TEST_PHONES:
+            reason = 'test phone - always superseded'
+        elif ghl_contact_id and seq_contact and seq_contact != ghl_contact_id:
+            reason = f'superseded by newer contact {ghl_contact_id} (was {seq_contact})'
+        elif max_days and current_day and current_day > max_days:
+            reason = f'past max_days ({current_day}>{max_days})'
+        elif max_calls and calls_made and calls_made >= max_calls:
+            reason = f'hit max_calls ({calls_made}/{max_calls})'
+        else:
+            try:
+                started = datetime.fromisoformat((created_at or '').replace('Z', ''))
+                age = (datetime.now() - started).days
+                if age >= SEQUENCE_STALE_DAYS:
+                    reason = f'stale - {age}d old (limit {SEQUENCE_STALE_DAYS}d)'
+            except Exception:
+                pass
+
+        if reason:
+            c.execute("UPDATE call_sequences SET status = ? WHERE id = ?", ('superseded', sid))
+            print(f"♻️ {label}Auto-cleared sequence {sid} for {phone}: {reason}")
+        else:
+            blocking = sid
+
+    return blocking
+
+
 def schedule_call_sequence(lead_id, phone, first_name, ghl_contact_id, agent_type='roofing'):
     """Schedule an intelligent 3-call sequence"""
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         
-        # Check if sequence already exists for this lead
-        c.execute('SELECT id FROM call_sequences WHERE lead_id = ? AND status = ?', (lead_id, 'active'))
-        if c.fetchone():
+        # Auto-clear superseded/stale sequences first, then check what genuinely blocks.
+        blocking = resolve_blocking_sequence(c, phone, ghl_contact_id, label='[schedule] ')
+        if blocking:
+            conn.commit()
             conn.close()
-            return {"success": False, "error": "Sequence already active for this lead"}
+            return {"success": False, "error": "Sequence already active for this lead",
+                    "sequence_id": blocking}
+        conn.commit()
         
         # Create new sequence - 7 days, 3 calls per day
         c.execute('''INSERT INTO call_sequences 
@@ -5158,7 +5242,7 @@ def ghl_import_contacts_from_ghl():
 def send_sms(phone, message, message_type="general", name="", address=""):
     """
     Send SMS via Retell API - same number as calls!
-    Uses HAILEY_PHONE_NUMBER (+17027105676) for all outbound SMS.
+    Uses SMS_PHONE_NUMBER for all outbound SMS (NOT the trunked voice number).
     
     NOTE: Retell SMS uses chat agents - the message is auto-generated by the agent.
     We pass name, address, etc. as dynamic variables so the chat agent can use them.
@@ -6007,7 +6091,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
     elif agent_type == 'roofing':
         # ROOFING CLIENT - Bulldog Roofing Hailey (NEPQ v2.3)
         retell_agent_id = 'agent_50ac8943b545a778304e160e93'  # ROOFING AGENT - HAILEY
-        from_number = HAILEY_PHONE_NUMBER  # +17027105676 - Hailey Retell (SMS enabled!)
+        from_number = HAILEY_PHONE_NUMBER  # +17206864625 - Denver 720 via SignalWire trunk
         print(f"\U0001F525 HAILEY ROOFING (SMS ENABLED): {from_number}")
         call_type = "outbound"
         call_purpose = "appointment_setting"
@@ -6042,7 +6126,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
         print(f"⚠️⚠️ Expected one of: 'roofing', 'solar', or an 'inbound_*' type. Check the GHL payload.")
         retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # Paige OUTBOUND (Demo)
         # 🔥 HAILEY LAS VEGAS NUMBER - Direct Retell
-        from_number = HAILEY_PHONE_NUMBER  # +17027105676 - Hailey Retell (SMS enabled!)
+        from_number = HAILEY_PHONE_NUMBER  # +17206864625 - Denver 720 via SignalWire trunk
         print(f"🔥 HAILEY LAS VEGAS: {from_number}")
         call_type = "outbound"
         call_purpose = "appointment_setting"
@@ -15126,7 +15210,7 @@ def send_twilio_sms(to_number, message):
     """
     account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
     auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
-    from_number = os.environ.get('OUTBOUND_NUMBER', '+17027105676')
+    from_number = os.environ.get('OUTBOUND_NUMBER', HAILEY_PHONE_NUMBER)  # VOICE
     
     if not account_sid or not auth_token:
         return {'success': False, 'error': 'Twilio credentials not configured'}
@@ -16026,11 +16110,8 @@ class Handler(BaseHTTPRequestHandler):
                     full_address = f"{address}, {city}" if address and city else address or city or ''
                     
                     # Check if sequence already exists
-                    c.execute('SELECT id, status FROM call_sequences WHERE phone = ? AND status IN (?, ?)', 
-                             (phone, 'active', 'pending'))
-                    existing = c.fetchone()
-                    
-                    if existing:
+                    blocking = resolve_blocking_sequence(c, phone, contact_id, label='[import] ')
+                    if blocking:
                         skipped.append({"name": first_name, "phone": phone, "reason": "Sequence already active"})
                         continue
                     
@@ -16570,7 +16651,7 @@ nav a:hover{{color:var(--text)}}
                 all_calls = [dict(row) for row in c.fetchall()]
                 
                 # Outbound number performance (fatigue detection)
-                outbound_number = RETELL_PHONE_NUMBER  # +17027105676 (Hailey)
+                outbound_number = RETELL_PHONE_NUMBER  # +17206864625 (Denver voice)
                 c.execute('''SELECT COUNT(*) as total, 
                     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as answered,
                     SUM(CASE WHEN status IN ('no_answer', 'short_call', 'voicemail', 'busy') THEN 1 ELSE 0 END) as no_answer
@@ -17408,7 +17489,7 @@ details summary::-webkit-details-marker{{display:none}}
                         retell_agent_id = 'agent_c345c5f578ebd6c188a7e474fa'  # OUTBOUND agent
                         # 🔥 USE VERIFIED CALLER ID - Same number as GHL texts!
                         if USE_VERIFIED_CALLER_ID:
-                            from_number = VERIFIED_CALLER_ID  # +17027105676 - Same as GHL SMS!
+                            from_number = VERIFIED_CALLER_ID  # verified caller ID bridge (disabled)
                         else:
                             from_number = RETELL_PHONE_NUMBER  # Fallback
                         opening = f"Hi, this is {agent_name} with {company}. I'm reaching out because you recently inquired about our {industry.lower()} services. Do you have a quick moment?"
@@ -17776,13 +17857,14 @@ Let's close some deals! 🚀"""
                     # Python handles: timing, 3 calls, checking appointments, SMS
                     # ═══════════════════════════════════════════════════════════
                     
-                    # Check if sequence already exists
-                    c.execute('SELECT id, status FROM call_sequences WHERE phone = ? AND status = ?', 
-                             (phone, 'active'))
-                    existing = c.fetchone()
-                    if existing:
+                    # Auto-clear superseded/stale sequences, then see what really blocks.
+                    # A new GHL contact on the same phone supersedes the old sequence -
+                    # otherwise re-testing from one cell jams the number permanently.
+                    blocking = resolve_blocking_sequence(c, phone, contact_id, label='[webhook] ')
+                    conn.commit()
+                    if blocking:
                         conn.close()
-                        self.send_json({"success": False, "error": "Sequence already active", "sequence_id": existing[0]})
+                        self.send_json({"success": False, "error": "Sequence already active", "sequence_id": blocking})
                         return
                     
                     # Create/update lead
@@ -19139,7 +19221,7 @@ def retell_webhook():
 # 🔥 TWILIO → RETELL BRIDGE
 # Uses YOUR Twilio to make calls (shows verified caller ID)
 # Then connects to Retell AI for the conversation
-# Customer sees +17027105676 for CALLS and TEXTS!
+# Customer sees the Denver 720 for CALLS; texts come from the Retell-native number.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", ghl_contact_id=None, address=""):
@@ -19148,7 +19230,7 @@ def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", g
     1. Register call with Retell (get WebSocket URL)
     2. Twilio makes outbound call from YOUR verified caller ID
     3. Twilio streams audio to Retell WebSocket
-    4. Customer sees +17027105676 for everything!
+    4. Customer sees the configured verified caller ID.
     """
     import base64
     from urllib.parse import urlencode
@@ -19391,7 +19473,7 @@ def text_then_call(phone, name="there", agent_type="solar", ghl_contact_id=None,
     2. Wait delay_seconds
     3. Make AI call
     
-    Customer sees SAME number (+17027105676) for both!
+    NOTE: calls and texts now come from DIFFERENT numbers (trunk is voice-only).
     """
     import threading
     import time

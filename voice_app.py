@@ -283,7 +283,16 @@ PORT = int(os.environ.get('PORT', 8080))
 # ═══════════════════════════════════════════════════════════════════════════════
 GHL_API_KEY = os.environ.get('GHL_API_KEY', '')  # Location API Key from GHL Settings
 GHL_LOCATION_ID = os.environ.get('GHL_LOCATION_ID', '1Kxb4wuQ087lYbcPdpNm')  # Your Location ID
-GHL_CALENDAR_ID = os.environ.get('GHL_CALENDAR_ID', 'wUUB0CNuZKlAy0NyYbmn')  # Solar Client Calendar
+GHL_CALENDAR_ID = os.environ.get('GHL_CALENDAR_ID', 'wUUB0CNuZKlAy0NyYbmn')  # fallback if name lookup fails
+# Book onto the calendar with THIS NAME. Resolved to an ID at runtime via the GHL API,
+# so you never have to hunt for the ID. Matching is case-insensitive and ignores spaces.
+# If the name can't be resolved, GHL_CALENDAR_ID above is used as the fallback.
+GHL_CALENDAR_NAME = os.environ.get('GHL_CALENDAR_NAME', 'Illinois Virtual')
+# IANA timezone the times Hailey SPEAKS are in. Leads are Denver, so appointment times
+# are the homeowner's local Mountain time. GHL converts for display on the Illinois
+# calendar - it stores an absolute instant, so the offset written here is what matters.
+# This drives the UTC offset written on the appointment - see ghl_create_appointment().
+GHL_TIMEZONE = os.environ.get('GHL_TIMEZONE', 'America/Denver')
 GHL_PIPELINE_ID = os.environ.get('GHL_PIPELINE_ID', '1Kxb4wuQ087lYbcPdpNm')  # Solar Leads Client pipeline
 
 # Custom Field IDs for AI call tracking
@@ -3397,14 +3406,80 @@ def ghl_get_pipelines():
     """Get all pipelines for the location"""
     return ghl_request('GET', '/opportunities/pipelines', params={'locationId': GHL_LOCATION_ID})
 
+_CALENDAR_ID_CACHE = {}
+
+
+def ghl_resolve_calendar_id(name=None, refresh=False):
+    """Resolve a calendar NAME to its GHL id, so config can name the calendar.
+
+    Falls back to GHL_CALENDAR_ID when the name can't be matched, and logs loudly -
+    booking onto the wrong calendar is silent and expensive, so it must be visible.
+    """
+    name = (name or GHL_CALENDAR_NAME or '').strip()
+    if not name:
+        return GHL_CALENDAR_ID
+
+    key = name.lower().replace(' ', '')
+    if not refresh and key in _CALENDAR_ID_CACHE:
+        return _CALENDAR_ID_CACHE[key]
+
+    resp = ghl_get_calendars()
+    calendars = (resp or {}).get('calendars', []) if isinstance(resp, dict) else []
+    if not calendars:
+        print(f"⚠️ Could not list GHL calendars ({resp if isinstance(resp, dict) else ''}). "
+              f"Falling back to GHL_CALENDAR_ID={GHL_CALENDAR_ID}")
+        return GHL_CALENDAR_ID
+
+    # exact (normalized) match first, then a contains match
+    normalized = {(c.get('name') or '').lower().replace(' ', ''): c for c in calendars}
+    match = normalized.get(key)
+    if not match:
+        for cal_key, cal in normalized.items():
+            if key in cal_key or cal_key in key:
+                match = cal
+                break
+
+    if match and match.get('id'):
+        _CALENDAR_ID_CACHE[key] = match['id']
+        print(f"📅 Calendar '{name}' resolved to {match['id']} (\"{match.get('name')}\")")
+        return match['id']
+
+    available = ', '.join(f'"{c.get("name")}"' for c in calendars) or '(none)'
+    print(f"🚨 No GHL calendar named '{name}'. Available: {available}")
+    print(f"🚨 Falling back to GHL_CALENDAR_ID={GHL_CALENDAR_ID} - appointments may land on the wrong calendar.")
+    return GHL_CALENDAR_ID
+
+
+def _tz_offset(dt_str):
+    """UTC offset string for GHL_TIMEZONE at the given local datetime.
+
+    The old code appended a hardcoded '-08:00'. That is wrong two ways: it is Pacific
+    when this calendar is Central, and it is the WINTER offset, so it was an hour off
+    during daylight saving even for Pacific. Computing it from the actual date handles
+    both, and the DST boundary.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        naive = datetime.fromisoformat(dt_str.replace('Z', ''))
+        aware = naive.replace(tzinfo=ZoneInfo(GHL_TIMEZONE))
+        off = aware.utcoffset()
+        total = int(off.total_seconds())
+        sign = '+' if total >= 0 else '-'
+        total = abs(total)
+        return f"{sign}{total // 3600:02d}:{(total % 3600) // 60:02d}"
+    except Exception as e:
+        print(f"⚠️ Timezone offset for '{GHL_TIMEZONE}' failed ({e}); defaulting to -06:00 (Central)")
+        return '-06:00'
+
+
 def ghl_create_appointment(contact_id, calendar_id, start_time, end_time, title=None, notes=None):
     """Create an appointment in GoHighLevel calendar"""
-    # Add timezone if not present
+    # Stamp the correct offset for the configured timezone, DST-aware.
     if start_time and 'T' in start_time and not ('+' in start_time or 'Z' in start_time):
-        start_time = start_time + '-08:00'  # PST
+        start_time = start_time + _tz_offset(start_time)
     if end_time and 'T' in end_time and not ('+' in end_time or 'Z' in end_time):
-        end_time = end_time + '-08:00'  # PST
-    
+        end_time = end_time + _tz_offset(end_time)
+
     data = {
         'locationId': GHL_LOCATION_ID,
         'contactId': contact_id,
@@ -3527,11 +3602,13 @@ def handle_conversation_ai_webhook(data):
                 start_dt = date_obj.replace(hour=time_obj.hour, minute=time_obj.minute, second=0)
                 end_dt = start_dt + timedelta(minutes=30)
                 
-                # Format for GHL API (Pacific time)
-                start_time = start_dt.strftime('%Y-%m-%dT%H:%M:%S') + '-10:00'
-                end_time = end_dt.strftime('%Y-%m-%dT%H:%M:%S') + '-10:00'
-                
-                print(f"   Parsed start: {start_time}")
+                # Leave naive; ghl_create_appointment() stamps the GHL_TIMEZONE offset.
+                # (The comment here said "Pacific time" while the code wrote '-10:00',
+                # which is Hawaii. Two hours off, every booking.)
+                start_time = start_dt.strftime('%Y-%m-%dT%H:%M:%S')
+                end_time = end_dt.strftime('%Y-%m-%dT%H:%M:%S')
+
+                print(f"   Parsed start: {start_time} ({GHL_TIMEZONE})")
                 
             except Exception as e:
                 print(f"⚠️ Date parsing error: {e}")
@@ -3541,15 +3618,17 @@ def handle_conversation_ai_webhook(data):
             from datetime import datetime, timedelta
             tomorrow_10am = datetime.now() + timedelta(days=1)
             tomorrow_10am = tomorrow_10am.replace(hour=10, minute=0, second=0)
-            start_time = tomorrow_10am.strftime('%Y-%m-%dT%H:%M:%S') + '-10:00'
-            end_time = (tomorrow_10am + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M:%S') + '-10:00'
-            print(f"   Using default time: {start_time}")
+            # Leave these naive - ghl_create_appointment() stamps the correct GHL_TIMEZONE
+            # offset. (This used to hardcode '-10:00', which is Hawaii.)
+            start_time = tomorrow_10am.strftime('%Y-%m-%dT%H:%M:%S')
+            end_time = (tomorrow_10am + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M:%S')
+            print(f"   Using default time: {start_time} ({GHL_TIMEZONE})")
         
         # Book the appointment in GHL calendar
         if contact_id:
             result = ghl_create_appointment(
                 contact_id=contact_id,
-                calendar_id=GHL_CALENDAR_ID,
+                calendar_id=ghl_resolve_calendar_id(),
                 start_time=start_time,
                 end_time=end_time,
                 title=f"Energy Assessment - {first_name} {last_name}".strip(),
@@ -3647,8 +3726,8 @@ def ghl_sync_appointment_to_ghl(appointment):
                     return {"success": False, "error": "Failed to create contact"}
                 contact_id = result['contact']['id']
         
-        # Use configured calendar ID
-        calendar_id = GHL_CALENDAR_ID
+        # Resolve the target calendar by name (GHL_CALENDAR_NAME), e.g. "Illinois Virtual"
+        calendar_id = ghl_resolve_calendar_id()
         
         # Create appointment
         appt_date = appointment.get('appointment_date', '')
@@ -18696,7 +18775,7 @@ def retell_webhook():
         )
         
         # ----- BOOK CALENDAR IF APPOINTMENT SET -----
-        if booked and GHL_CALENDAR_ID:
+        if booked:
             # Try to extract appointment time from Retell function calls
             appt_time = None
             
@@ -18723,28 +18802,55 @@ def retell_webhook():
                         start_dt = appt_time
                     
                     end_dt = start_dt + timedelta(minutes=30)
-                    
-                    # Book the appointment
+
+                    # Naive time from Retell: stamp the configured timezone rather than
+                    # letting GHL assume UTC (that lands the appointment hours off).
+                    start_iso = start_dt.isoformat()
+                    end_iso = end_dt.isoformat()
+                    if start_dt.tzinfo is None:
+                        start_iso += _tz_offset(start_iso)
+                        end_iso += _tz_offset(end_iso)
+
+                    # This is the one place the recording actually exists - it is only
+                    # published once the call ends, so it cannot be attached at book time
+                    # during the call. Put it on the appointment itself, not just the note.
+                    appt_notes = [
+                        "Booked via AI call",
+                        f"Call ID: {call_data.get('call_id')}",
+                    ]
+                    if recording_url:
+                        appt_notes.append(f"🎧 Recording: {recording_url}")
+                    if transcript:
+                        appt_notes.append("")
+                        appt_notes.append(f"📝 Transcript: {transcript[:1500]}")
+
+                    target_calendar = ghl_resolve_calendar_id()
+
                     appt_payload = {
-                        "calendarId": GHL_CALENDAR_ID,
+                        "calendarId": target_calendar,
+                        "locationId": GHL_LOCATION_ID,
                         "contactId": contact_id,
-                        "startTime": start_dt.isoformat(),
-                        "endTime": end_dt.isoformat(),
+                        "startTime": start_iso,
+                        "endTime": end_iso,
                         "title": f"Solar Consultation - {contact_name or 'New Lead'}",
                         "appointmentStatus": "confirmed",
-                        "notes": f"Booked via AI call\nCall ID: {call_data.get('call_id')}"
+                        "notes": "\n".join(appt_notes)
                     }
-                    
+
+                    # V2 endpoint. The old '/calendars/{id}/appointments' path is not the
+                    # documented v2 route and returns 404 on this API version.
                     appt_resp = requests.post(
-                        f"{GHL_BASE_URL}/calendars/{GHL_CALENDAR_ID}/appointments",
+                        f"{GHL_BASE_URL}/calendars/events/appointments",
                         headers=GHL_HEADERS,
                         json=appt_payload
                     )
-                    
+
                     if appt_resp.status_code in [200, 201]:
-                        print(f"[RETELL WEBHOOK] ✅ Calendar booked: {start_dt}")
+                        print(f"[RETELL WEBHOOK] ✅ Calendar booked: {start_iso} on {target_calendar}")
+                        if recording_url:
+                            print(f"[RETELL WEBHOOK] 🎧 Recording attached: {recording_url}")
                     else:
-                        print(f"[RETELL WEBHOOK] ❌ Calendar failed: {appt_resp.text}")
+                        print(f"[RETELL WEBHOOK] ❌ Calendar failed ({appt_resp.status_code}): {appt_resp.text}")
                         
                 except Exception as cal_err:
                     print(f"[RETELL WEBHOOK] ❌ Calendar error: {cal_err}")

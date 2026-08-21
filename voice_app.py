@@ -10,7 +10,7 @@
 📍 YOUR PRESENCE - When you can't be there
 """
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 import json, sqlite3, os, requests, threading, time, webbrowser, re
 from datetime import datetime, timedelta
 from urllib.parse import urlparse, parse_qs
@@ -51,9 +51,31 @@ RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railw
 # Do NOT collapse these back into one value unless both live on the same
 # Retell-native number.
 # ═══════════════════════════════════════════════════════════════════════════════
-HAILEY_PHONE_NUMBER = os.environ.get('HAILEY_PHONE_NUMBER', '+17206054003')   # VOICE - Denver, Retell-native
-RETELL_PHONE_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206054003')   # VOICE - Denver, Retell-native
-SMS_PHONE_NUMBER = os.environ.get('SMS_PHONE_NUMBER', '+17206054003')         # SMS - same number (A2P pending)
+def to_e164(value, default=''):
+    """Force a phone number to E.164, whatever format it was pasted in.
+
+    Retell matches from_number EXACTLY. A number copied out of a dashboard as
+    "+1(720)605-4003" is not the same string as "+17206054003", and the call fails
+    with a bare 404 Not Found that looks like the number does not exist. This makes
+    the config forgiving of parens, dashes, spaces and dots.
+    """
+    raw = (value or '').strip()
+    if not raw:
+        return default
+    digits = re.sub(r'\D', '', raw)
+    if len(digits) == 10:
+        return '+1' + digits
+    if len(digits) == 11 and digits.startswith('1'):
+        return '+' + digits
+    if len(digits) > 11:
+        return '+' + digits
+    print(f"⚠️ Could not normalize phone '{raw}' to E.164 - using it as-is")
+    return raw
+
+
+HAILEY_PHONE_NUMBER = to_e164(os.environ.get('HAILEY_PHONE_NUMBER'), '+17206054003')   # VOICE - Denver, Retell-native
+RETELL_PHONE_NUMBER = to_e164(os.environ.get('RETELL_PHONE_NUMBER'), '+17206054003')   # VOICE - Denver, Retell-native
+SMS_PHONE_NUMBER = to_e164(os.environ.get('SMS_PHONE_NUMBER'), '+17206054003')         # SMS - same number (A2P pending)
 
 # Text before call settings (NEPQ style)
 TEXT_BEFORE_CALL = os.environ.get('TEXT_BEFORE_CALL', 'true').lower() == 'true'
@@ -107,7 +129,7 @@ RETELL_STATE_FALLBACK = {
 }
 
 # Default fallback number (used when no match found) - SMS enabled!
-RETELL_DEFAULT_NUMBER = os.environ.get('RETELL_PHONE_NUMBER', '+17206054003')  # VOICE - Denver, Retell-native
+RETELL_DEFAULT_NUMBER = to_e164(os.environ.get('RETELL_PHONE_NUMBER'), '+17206054003')  # VOICE
 
 def get_local_presence_number(lead_phone, lead_state=None):
     """
@@ -204,10 +226,10 @@ COMPANY_PHONE = os.environ.get('COMPANY_PHONE', '')
 
 # Owner notification settings
 OWNER_EMAIL = os.environ.get('OWNER_EMAIL', 'john.soderberg86@gmail.com')
-OWNER_PHONE = os.environ.get('OWNER_PHONE', '+17023240525')
+OWNER_PHONE = to_e164(os.environ.get('OWNER_PHONE'), '+17023240525')
 # Where the "appointment set" text goes. Separate from OWNER_PHONE so changing the
 # appointment alert destination doesn't silently re-route every other owner alert.
-APPT_ALERT_PHONE = os.environ.get('APPT_ALERT_PHONE', '+17026721251')
+APPT_ALERT_PHONE = to_e164(os.environ.get('APPT_ALERT_PHONE'), '+17026721251')
 
 # Call IDs whose post-call GHL sync has already run. Retell delivers call_ended and
 # call_analyzed, and retries both, so without this every call syncs 3+ times.
@@ -5333,6 +5355,41 @@ def send_sms(phone, message, message_type="general", name="", address=""):
         return {"success": False, "error": str(e)}
 
 
+def send_lead_sms(phone, name="", address="", ghl_contact_id=None, message=""):
+    """Send the pre-call intro text, falling back to GHL when Retell SMS is blocked.
+
+    Retell SMS requires A2P 10DLC registration on the sending number. Until that
+    clears, every send returns:
+        404 {"message":"Item not found in a2p-application with phoneNumber=..."}
+    GoHighLevel's own number is already registered, so route through it instead of
+    dropping the text. The NEPQ flow depends on the lead having seen a text before
+    Hailey calls ("so you saw my text?"), so a silent failure costs real pickups.
+    """
+    result = send_retell_sms(phone, message=message, name=name, address=address)
+    if result.get('success'):
+        return result
+
+    err = str(result.get('error', ''))
+    print(f"⚠️ Retell SMS unavailable ({err[:120]})")
+
+    if not ghl_contact_id:
+        print("   No GHL contact id - cannot fall back. Text NOT sent.")
+        return result
+
+    first = (name or '').split()[0] if name else 'there'
+    body = message or (
+        f"Hey {first}, it's Hailey with All Access. Saw you were looking at the solar "
+        f"program{' for ' + address if address else ''}. Giving you a quick call in a sec."
+    )
+    ghl_result = ghl_send_sms(ghl_contact_id, body)
+    if isinstance(ghl_result, dict) and not ghl_result.get('error'):
+        print(f"📲 ✅ Intro text sent via GHL instead (contact {ghl_contact_id})")
+        return {'success': True, 'via': 'ghl', 'data': ghl_result}
+
+    print(f"📲 🚨 GHL SMS also failed: {ghl_result}. Text NOT sent.")
+    return result
+
+
 def send_retell_sms(to_number, message="", from_number=None, name="", address=""):
     """Send SMS via Retell API - same number as calls!
     
@@ -6054,7 +6111,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
         
         # Send the intro text with name and address for personalization
         # The chat agent will use these variables: {{first_name}}, {{address}}
-        sms_result = send_retell_sms(phone, name=name, address=address)
+        sms_result = send_lead_sms(phone, name=name, address=address, ghl_contact_id=ghl_contact_id)
         
         if sms_result.get('success'):
             print(f"✅ Intro text sent! Continuing to call...")
@@ -10752,8 +10809,8 @@ if(!query||query.length<2){renderApptList(allAppointments);return}
 query=query.toLowerCase();
 var filtered=allAppointments.filter(a=>{
 var name=((a.first_name||'')+(a.last_name||'')).toLowerCase();
-var phone=(a.phone||'').replace(/\D/g,'');
-return name.indexOf(query)>=0||phone.indexOf(query.replace(/\D/g,''))>=0;
+var phone=(a.phone||'').replace(/\\D/g,'');
+return name.indexOf(query)>=0||phone.indexOf(query.replace(/\\D/g,''))>=0;
 });
 renderApptList(filtered);
 }
@@ -11080,8 +11137,8 @@ function searchLeads(query) {
     query = query.toLowerCase();
     var filtered = pipelineData.leads.filter(function(lead) {
         var name = ((lead.first_name || '') + ' ' + (lead.last_name || '')).toLowerCase();
-        var phone = (lead.phone || '').replace(/\D/g, '');
-        return name.indexOf(query) >= 0 || phone.indexOf(query.replace(/\D/g, '')) >= 0;
+        var phone = (lead.phone || '').replace(/\\D/g, '');
+        return name.indexOf(query) >= 0 || phone.indexOf(query.replace(/\\D/g, '')) >= 0;
     });
     renderLeadsList(filtered, 'all');
 }
@@ -15372,11 +15429,38 @@ def get_predicted_best_time(phone):
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def send_json(self, d):
+        # Idempotent: once we have acknowledged, later sends are no-ops. Lets a slow
+        # handler ack early and keep working without corrupting the response.
+        if getattr(self, '_responded', False):
+            return
+        self._responded = True
+        body = json.dumps(d, default=str).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
+        # Content-Length is what lets the caller finish the response NOW. Without it
+        # the body has no terminator until the connection closes, so the client waits
+        # for the whole handler to return - which defeats acknowledging early.
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Connection', 'close')
         self.end_headers()
-        self.wfile.write(json.dumps(d, default=str).encode())
+        self.wfile.write(body)
+        try:
+            self.wfile.flush()
+        except Exception:
+            pass
+
+    def ack_now(self, d=None):
+        """Answer the caller immediately, then keep processing.
+
+        GHL and Retell both time out webhooks in seconds and retry on failure. This
+        handler does GHL lookups, Sheets sync, opportunity creation, SMS and an
+        outbound call before it would otherwise reply - far past Railway's proxy
+        timeout, which surfaces as 502 "Application failed to respond" and a retry
+        storm. Acknowledge first; do the work after.
+        """
+        self.send_json(d or {"success": True, "status": "accepted"})
+        print("↩️ Webhook acknowledged early - continuing work in the background")
     def send_html(self, c):
         self.send_response(200)
         self.send_header('Content-Type', 'text/html')
@@ -17908,10 +17992,24 @@ Let's close some deals! 🚀"""
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                         (lead_id, phone, first_name, full_address, contact_id, agent_type, 'active', 1, 0, 0, 21, 7, datetime.now().isoformat()))
                     sequence_id = c.lastrowid
-                    
+
                     conn.commit()
                     conn.close()
-                    
+
+                    # ── Acknowledge GHL NOW ──────────────────────────────────
+                    # The sequence row is committed, so the work is guaranteed to
+                    # happen. Everything below (Sheets, opportunity, SMS, the call
+                    # itself) takes far longer than GHL or Railway will wait, and a
+                    # late reply shows up as 502 "Application failed to respond"
+                    # followed by GHL retrying the whole webhook.
+                    self.ack_now({
+                        "success": True,
+                        "status": "accepted",
+                        "sequence_id": sequence_id,
+                        "lead_id": lead_id,
+                        "contact_id": contact_id,
+                    })
+
                     # Sync to Google Sheets
                     if GOOGLE_SHEETS_ENABLED:
                         try:
@@ -17973,7 +18071,7 @@ Let's close some deals! 🚀"""
                     print(f"📱 Sending NEPQ intro text to {phone}...")
                     print(f"   Name: {first_name}, Address: {full_address}")
                     
-                    sms_result = send_retell_sms(phone, name=first_name, address=full_address)
+                    sms_result = send_lead_sms(phone, name=first_name, address=full_address, ghl_contact_id=contact_id)
                     
                     if sms_result.get('success'):
                         print(f"✅ Retell SMS sent! Chat ID: {sms_result.get('chat_id')}")
@@ -18870,7 +18968,8 @@ def main():
     scheduler_thread.start()
     
     webbrowser.open('http://localhost:8080')
-    HTTPServer(('', 8080), Handler).serve_forever()
+    # Threaded: one slow webhook must not block every other request.
+    ThreadingHTTPServer(('', 8080), Handler).serve_forever()
 
 
 def print_boot_banner():

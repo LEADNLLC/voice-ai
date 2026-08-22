@@ -1,7 +1,7 @@
 From 78a61824389b5b6d175bb04cd27ae4407690f40a Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:19:00 +0000
-Subject: [PATCH 01/20] Route solar to new Retell agent, move outbound to
+Subject: [PATCH 01/22] Route solar to new Retell agent, move outbound to
  +17027105676, remove committed secrets
 
 ---
@@ -323,7 +323,7 @@ index 1ea393b..497b657 100644
 From c07ec35ae2728d1f59312031fa2feaf54fbc9fa5 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:31:05 +0000
-Subject: [PATCH 02/20] Remove solar->roofing webhook override, normalize
+Subject: [PATCH 02/22] Remove solar->roofing webhook override, normalize
  agent_type casing, loud unknown-agent fallback
 
 ---
@@ -375,7 +375,7 @@ index 497b657..dfec52f 100644
 From e3199bed8e2fad32b47494635c8073b88384389b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 20:52:38 +0000
-Subject: [PATCH 03/20] Pull address/state/phone from GHL contact record; scrub
+Subject: [PATCH 03/22] Pull address/state/phone from GHL contact record; scrub
  unresolved merge fields
 
 ---
@@ -540,7 +540,7 @@ index dfec52f..3f0a898 100644
 From 478b606c3449e553310f5c9fceb768580f0edf1d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:07:47 +0000
-Subject: [PATCH 04/20] Resolve booking calendar by name, DST-aware timezone
+Subject: [PATCH 04/22] Resolve booking calendar by name, DST-aware timezone
  offsets, attach recording to appointment
 
 ---
@@ -787,7 +787,7 @@ index 3f0a898..51f67f0 100644
 From 36845522c9edf14bf9bd90ceaca4f8ca799a6f86 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:08:25 +0000
-Subject: [PATCH 05/20] Default appointment timezone to America/Denver
+Subject: [PATCH 05/22] Default appointment timezone to America/Denver
  (homeowner local time)
 
 ---
@@ -836,7 +836,7 @@ index 51f67f0..2e127c1 100644
 From 94d3724ed27b3ea40313b0f83c51b19dfa16004c Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:17:12 +0000
-Subject: [PATCH 06/20] Fix name matching for punctuated GHL names, move
+Subject: [PATCH 06/22] Fix name matching for punctuated GHL names, move
  opportunity to Appointment Set, text owner on booking
 
 ---
@@ -1268,7 +1268,7 @@ index 2e127c1..24d7ba1 100644
 From ff0856260980dbb134f96e04a149a67ed5938d22 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:22:49 +0000
-Subject: [PATCH 07/20] Use override_agent_id: agent_id is not a valid
+Subject: [PATCH 07/22] Use override_agent_id: agent_id is not a valid
  create-phone-call field and was being ignored
 
 ---
@@ -1322,7 +1322,7 @@ index 24d7ba1..afb1744 100644
 From c5875a7a31f0cbefc5c791851756cc9cb830153f Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:25:02 +0000
-Subject: [PATCH 08/20] Decouple SMS sender from call sender; add Denver 720 to
+Subject: [PATCH 08/22] Decouple SMS sender from call sender; add Denver 720 to
  local presence pool
 
 ---
@@ -1409,7 +1409,7 @@ index afb1744..fc06fc7 100644
 From f91bdea8afc0b725ca69b86d6043cf1beb33315a Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:44:37 +0000
-Subject: [PATCH 09/20] Move all voice paths to the Denver 720; SMS stays on
+Subject: [PATCH 09/22] Move all voice paths to the Denver 720; SMS stays on
  the Retell-native 702
 
 ---
@@ -1572,7 +1572,7 @@ index fc06fc7..7049bda 100644
 From 55e4c147c6903942cb7fcecdd41702a1080159d6 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:44:52 +0000
-Subject: [PATCH 10/20] Dedupe number keys in env.example
+Subject: [PATCH 10/22] Dedupe number keys in env.example
 
 ---
  env.example | 5 +----
@@ -1601,7 +1601,7 @@ index 6f76f03..4b6740f 100644
 From c1630ee8e9e12b05efd269e870759bc7770a921d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 21:58:33 +0000
-Subject: [PATCH 11/20] Auto-supersede stale/obsolete call sequences instead of
+Subject: [PATCH 11/22] Auto-supersede stale/obsolete call sequences instead of
  blocking a phone forever
 
 ---
@@ -1775,7 +1775,7 @@ index 7049bda..9f161ad 100644
 From 09950ff61fff4f434e0804137a5ea3fcdb8147ce Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 22:13:46 +0000
-Subject: [PATCH 12/20] Add boot banner so deploys are verifiable from the logs
+Subject: [PATCH 12/22] Add boot banner so deploys are verifiable from the logs
 
 ---
  voice_app.py | 27 +++++++++++++++++++++++++++
@@ -1834,7 +1834,7 @@ index 9f161ad..3de1cf6 100644
 From 15f8cf1a84258474a130a6b6f5c06dc0a2664e29 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 22:23:30 +0000
-Subject: [PATCH 13/20] Dedupe Retell webhook deliveries; heal missing call_log
+Subject: [PATCH 13/22] Dedupe Retell webhook deliveries; heal missing call_log
  columns
 
 ---
@@ -1915,7 +1915,7 @@ index 3de1cf6..ca8fd30 100644
 From cd1dde0e6424082e44e99e023c26e9f917447132 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 22:28:39 +0000
-Subject: [PATCH 14/20] Revert voice to the Retell-native number; park the
+Subject: [PATCH 14/22] Revert voice to the Retell-native number; park the
  SignalWire trunk
 
 ---
@@ -2047,7 +2047,7 @@ index ca8fd30..c422c1c 100644
 From e688709883f36df7b58e6217138556d685cd04ff Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 23:06:19 +0000
-Subject: [PATCH 15/20] Switch to Retell-native Denver number +17208215937 for
+Subject: [PATCH 15/22] Switch to Retell-native Denver number +17208215937 for
  voice and SMS
 
 ---
@@ -2176,7 +2176,7 @@ index c422c1c..a402153 100644
 From d7cf46d3f13255a822cfa4593bddc579dcee62d3 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 23:08:31 +0000
-Subject: [PATCH 16/20] Correct Denver number to +17206054003
+Subject: [PATCH 16/22] Correct Denver number to +17206054003
 
 ---
  env.example  |  8 ++++----
@@ -2278,7 +2278,7 @@ index a402153..fd0c1b7 100644
 From fa652bd673ada815871844a4be70f8d1cf2cfc64 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 23:15:54 +0000
-Subject: [PATCH 17/20] Normalize phone env vars to E.164; fix invalid escape
+Subject: [PATCH 17/22] Normalize phone env vars to E.164; fix invalid escape
  sequences in embedded JS
 
 ---
@@ -2375,7 +2375,7 @@ index fd0c1b7..a0d3d41 100644
 From 8814bbb97b6550f6a4eda5c944cdd35edd7edec5 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 23:27:21 +0000
-Subject: [PATCH 18/20] Fall back to GHL SMS when Retell A2P blocks the intro
+Subject: [PATCH 18/22] Fall back to GHL SMS when Retell A2P blocks the intro
  text
 
 ---
@@ -2453,7 +2453,7 @@ index a0d3d41..1ea3f14 100644
 From 6f14bfea5a0608f1cda829cb355f5d9258f63fcf Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 21 Aug 2026 23:36:51 +0000
-Subject: [PATCH 19/20] Ack webhooks immediately and thread the server: fixes
+Subject: [PATCH 19/22] Ack webhooks immediately and thread the server: fixes
  502 timeouts and retry storms
 
 ---
@@ -2557,7 +2557,7 @@ index 1ea3f14..92c0a6f 100644
 From be178c602551351a21bb6f587d5dfb8cd1a9022a Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sat, 22 Aug 2026 00:12:21 +0000
-Subject: [PATCH 20/20] Detect do-not-call requests and stop the sequence + set
+Subject: [PATCH 20/22] Detect do-not-call requests and stop the sequence + set
  GHL DND
 
 ---
@@ -2661,6 +2661,114 @@ index 92c0a6f..0d49824 100644
          # Determine tag based on outcome
          if status in ["no-answer", "no_answer"]:
              tag = "AI - No Answer"
+-- 
+2.43.0
+
+
+From 8236d9092536fa4a2a4541d0bafc25a39a65d71e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 22 Aug 2026 00:51:45 +0000
+Subject: [PATCH 21/22] Harden renter detection against ASR mishearings so
+ disqualified leads exit the sequence
+
+---
+ voice_app.py | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/voice_app.py b/voice_app.py
+index 0d49824..6fce028 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -18578,9 +18578,19 @@ Let's close some deals! 🚀"""
+                         "credit issues", "bankruptcy", "foreclosure"
+                     ])
+                     
++                    # Speech-to-text mangles "renter" constantly - a real call transcribed
++                    # it as "I'm a runner" and slipped through, leaving a disqualified
++                    # lead sitting in a 21-call sequence. Match the mishearings too, and
++                    # catch the follow-up phrasing Hailey's renter branch produces.
+                     disqualified = any(phrase in transcript_lower for phrase in [
+-                        "renter", "i rent", "don't own", "apartment", "condo",
+-                        "mobile home", "not the homeowner", "landlord"
++                        "renter", "i rent", "we rent", "renting", "don't own", "dont own",
++                        "do not own", "apartment", "condo", "mobile home",
++                        "not the homeowner", "not the owner", "landlord", "lease",
++                        # common ASR mishearings of "I'm a renter"
++                        "i'm a runner", "im a runner", "i am a runner", "a renner",
++                        # what they say when Hailey asks if the owner is around
++                        "lives someplace else", "lives somewhere else", "doesn't live here",
++                        "does not live here", "owner isn't here", "owner is not here",
+                     ])
+                     
+                     # Determine final outcome, tag, and pipeline stage
+-- 
+2.43.0
+
+
+From ed0fb19944ff76e768529f4b6a3c15a11d34cf0d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 22 Aug 2026 00:57:57 +0000
+Subject: [PATCH 22/22] Compute the call window in the lead's timezone, not
+ Pacific
+
+---
+ env.example  |  5 +++++
+ voice_app.py | 24 ++++++++++++++++++++----
+ 2 files changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/env.example b/env.example
+index 8b353d0..0c26b3b 100644
+--- a/env.example
++++ b/env.example
+@@ -68,6 +68,11 @@ HAILEY_PHONE_NUMBER=+17206054003
+ RETELL_PHONE_NUMBER=+17206054003
+ SMS_PHONE_NUMBER=+17206054003
+ 
++# ⚠️ TURN THIS OFF BEFORE RUNNING REAL LEADS.
++# true = call at any hour, including 3am. Only for testing.
++# false = respect the call window, computed in GHL_TIMEZONE (the lead's local time).
++BYPASS_CALLING_HOURS=false
++
+ # ── Call sequence hygiene ────────────────────────────────────────────────────
+ # Active sequences older than this are auto-cleared instead of blocking forever.
+ SEQUENCE_STALE_DAYS=8
+diff --git a/voice_app.py b/voice_app.py
+index 6fce028..77fe878 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -4174,12 +4174,28 @@ def get_pacific_time():
+     
+     return utc_now + pacific_offset
+ 
++def get_lead_local_time():
++    """Now, in the timezone the LEADS live in (not the server's, not Pacific).
++
++    TCPA limits are relative to the person being called, so the window has to be
++    computed in their timezone. Reuses GHL_TIMEZONE, which is already set to the
++    market you dial (America/Denver).
++    """
++    try:
++        from zoneinfo import ZoneInfo
++        from datetime import timezone as _tz
++        return datetime.now(_tz.utc).astimezone(ZoneInfo(GHL_TIMEZONE)).replace(tzinfo=None)
++    except Exception as e:
++        print(f"⚠️ Lead timezone '{GHL_TIMEZONE}' failed ({e}); falling back to Pacific")
++        return get_pacific_time()
++
++
+ def is_in_call_window():
+-    """Check if current time is within allowed calling hours (Pacific time)"""
+-    now = get_pacific_time()
++    """Check if it is an allowed time to call, in the LEAD's local timezone."""
++    now = get_lead_local_time()
+     hour = now.hour
+-    
+-    print(f"🕐 Pacific time: {now.strftime('%I:%M %p')} (hour={hour})")
++
++    print(f"🕐 Lead local time ({GHL_TIMEZONE}): {now.strftime('%I:%M %p')} (hour={hour})")
+     
+     # 🔧 BYPASS FOR TESTING
+     if BYPASS_CALLING_HOURS:
 -- 
 2.43.0
 

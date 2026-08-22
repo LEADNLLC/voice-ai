@@ -4174,12 +4174,28 @@ def get_pacific_time():
     
     return utc_now + pacific_offset
 
+def get_lead_local_time():
+    """Now, in the timezone the LEADS live in (not the server's, not Pacific).
+
+    TCPA limits are relative to the person being called, so the window has to be
+    computed in their timezone. Reuses GHL_TIMEZONE, which is already set to the
+    market you dial (America/Denver).
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import timezone as _tz
+        return datetime.now(_tz.utc).astimezone(ZoneInfo(GHL_TIMEZONE)).replace(tzinfo=None)
+    except Exception as e:
+        print(f"⚠️ Lead timezone '{GHL_TIMEZONE}' failed ({e}); falling back to Pacific")
+        return get_pacific_time()
+
+
 def is_in_call_window():
-    """Check if current time is within allowed calling hours (Pacific time)"""
-    now = get_pacific_time()
+    """Check if it is an allowed time to call, in the LEAD's local timezone."""
+    now = get_lead_local_time()
     hour = now.hour
-    
-    print(f"🕐 Pacific time: {now.strftime('%I:%M %p')} (hour={hour})")
+
+    print(f"🕐 Lead local time ({GHL_TIMEZONE}): {now.strftime('%I:%M %p')} (hour={hour})")
     
     # 🔧 BYPASS FOR TESTING
     if BYPASS_CALLING_HOURS:
@@ -18578,9 +18594,19 @@ Let's close some deals! 🚀"""
                         "credit issues", "bankruptcy", "foreclosure"
                     ])
                     
+                    # Speech-to-text mangles "renter" constantly - a real call transcribed
+                    # it as "I'm a runner" and slipped through, leaving a disqualified
+                    # lead sitting in a 21-call sequence. Match the mishearings too, and
+                    # catch the follow-up phrasing Hailey's renter branch produces.
                     disqualified = any(phrase in transcript_lower for phrase in [
-                        "renter", "i rent", "don't own", "apartment", "condo",
-                        "mobile home", "not the homeowner", "landlord"
+                        "renter", "i rent", "we rent", "renting", "don't own", "dont own",
+                        "do not own", "apartment", "condo", "mobile home",
+                        "not the homeowner", "not the owner", "landlord", "lease",
+                        # common ASR mishearings of "I'm a renter"
+                        "i'm a runner", "im a runner", "i am a runner", "a renner",
+                        # what they say when Hailey asks if the owner is around
+                        "lives someplace else", "lives somewhere else", "doesn't live here",
+                        "does not live here", "owner isn't here", "owner is not here",
                     ])
                     
                     # Determine final outcome, tag, and pipeline stage

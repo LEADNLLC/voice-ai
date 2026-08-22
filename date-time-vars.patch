@@ -1,0 +1,115 @@
+From ab87b146c9596cc44a23b58b0b6a9c5e4597c924 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 22 Aug 2026 23:18:58 +0000
+Subject: [PATCH] Pass real date/time context to the Retell agent
+
+The agent had no idea what day it was, so it offered 'today or tomorrow',
+got told tomorrow was Sunday, and asked about tomorrow twice more. It also
+offered a 6pm slot at 5pm - an hour's notice for a home visit.
+
+build_time_vars() supplies current_day/current_time/tomorrow_day plus
+today_bookable / tomorrow_bookable / earliest_today / next_workday, all
+computed in the lead's timezone. EARLIEST_OFFER_HOURS, LAST_OFFER_HOUR,
+SATURDAY_OK and SUNDAY_OK make the rules configurable.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ voice_app.py | 61 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 61 insertions(+)
+
+diff --git a/voice_app.py b/voice_app.py
+index 77fe878..b4a948a 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -242,6 +242,16 @@ BUILD_TAG = os.environ.get('BUILD_TAG', '2026-08-21 denver-720-native +172060540
+ # An 'active' sequence older than this is treated as abandoned and auto-cleared rather
+ # than blocking a new one forever. Sequences themselves run max_days=7.
+ SEQUENCE_STALE_DAYS = int(os.environ.get('SEQUENCE_STALE_DAYS', '8'))
++
++# ── Appointment offering rules ───────────────────────────────────────────────
++# How far out the SOONEST slot she may offer is. At 5pm with a 2h buffer she
++# offers 7pm, not 6pm. Stops "I've got six o'clock open" landing 55 minutes out.
++EARLIEST_OFFER_HOURS = int(os.environ.get('EARLIEST_OFFER_HOURS', '2'))
++# Last hour she may offer a same-day slot (24h). 19 = 7pm.
++LAST_OFFER_HOUR = int(os.environ.get('LAST_OFFER_HOUR', '19'))
++# Do reps actually run appointments on weekends? Set these to what's true.
++SATURDAY_OK = os.environ.get('SATURDAY_OK', 'true').lower() == 'true'
++SUNDAY_OK = os.environ.get('SUNDAY_OK', 'false').lower() == 'true'
+ # Numbers that may ALWAYS start a fresh sequence. Without this, re-testing from the same
+ # cell jams permanently and every test needs a manual database fix.
+ TEST_PHONES = {
+@@ -4190,6 +4200,53 @@ def get_lead_local_time():
+         return get_pacific_time()
+ 
+ 
++def build_time_vars():
++    """Date/time context for the Retell agent, in the LEAD's timezone.
++
++    WHY THIS EXISTS: without these the agent has no idea what day it is, so it
++    offers "today or tomorrow" and then argues with the customer about whether
++    tomorrow is Sunday. That is exactly what killed the John call - he said
++    "tomorrow is Sunday, most people don't work Sunday" and Hailey answered
++    "mornin', afternoon, or evenin' tomorrow?" three separate times.
++
++    It also stops her offering a slot that has already passed, or one an hour
++    out at 5pm. EARLIEST_OFFER_HOURS is that buffer.
++
++    Every value is a plain string - Retell substitutes them into the prompt as
++    text, so anything non-string comes out looking like Python.
++    """
++    now = get_lead_local_time()
++    earliest = now + timedelta(hours=EARLIEST_OFFER_HOURS)
++    tomorrow = now + timedelta(days=1)
++
++    # Next day that is actually bookable, skipping weekend days we don't run.
++    nxt = now + timedelta(days=1)
++    for _ in range(7):
++        if nxt.weekday() == 6 and not SUNDAY_OK:
++            nxt += timedelta(days=1)
++            continue
++        if nxt.weekday() == 5 and not SATURDAY_OK:
++            nxt += timedelta(days=1)
++            continue
++        break
++
++    return {
++        "current_day":    now.strftime('%A'),
++        "current_date":   now.strftime('%B %d').replace(' 0', ' '),
++        "current_time":   now.strftime('%I:%M %p').lstrip('0').lower(),
++        "tomorrow_day":   tomorrow.strftime('%A'),
++        # Soonest hour she may offer today, spoken.
++        "earliest_today": earliest.strftime('%I %p').lstrip('0').lower(),
++        # "yes" only if a slot is still left today.
++        "today_bookable": "yes" if earliest.hour < LAST_OFFER_HOUR and earliest.date() == now.date() else "no",
++        # Named day to fall back to when today is gone or tomorrow is a no-go.
++        "next_workday":   nxt.strftime('%A'),
++        "tomorrow_bookable": "yes" if (
++            (tomorrow.weekday() != 6 or SUNDAY_OK) and (tomorrow.weekday() != 5 or SATURDAY_OK)
++        ) else "no",
++    }
++
++
+ def is_in_call_window():
+     """Check if it is an allowed time to call, in the LEAD's local timezone."""
+     now = get_lead_local_time()
+@@ -6301,6 +6358,9 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
+             "urgency_trigger": industry_details['urgency_trigger'],
+             "financing_options": industry_details['financing']
+         }
++        # What day/time it actually is, in the lead's timezone. Without this the
++        # agent offers "tomorrow" on a Saturday and then argues about Sunday.
++        dynamic_vars.update(build_time_vars())
+         
+         # Simple create-phone-call API - works with Retell-native numbers!
+         response = requests.post(
+@@ -19545,6 +19605,7 @@ def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", g
+         "opening_message": opening,
+         "ghl_contact_id": ghl_contact_id or ""
+     }
++    dynamic_vars.update(build_time_vars())
+     
+     try:
+         # Step 1: Register call with Retell to get WebSocket URL
+-- 
+2.43.0
+

@@ -4326,6 +4326,49 @@ def get_countdown_info():
         'reason': 'Unknown'
     }
 
+DNC_PHRASES = [
+    "stop calling", "quit calling", "don't call me", "do not call",
+    "dont call me", "take me off", "remove me", "unsubscribe",
+    "off your list", "off the list", "off your calling list",
+    "never call", "lose my number", "delete my number",
+    "not interested and stop", "leave me alone", "harassing me",
+    "report you", "i'll sue", "attorney general",
+]
+
+# Phrases that LOOK like a removal request but are not. "call me back tomorrow" is a
+# callback, not a do-not-call, and treating it as one throws away a live lead.
+DNC_FALSE_FRIENDS = [
+    "don't call me back until", "dont call me back until",
+    "don't call me before", "dont call me before",
+    "don't call me at work", "dont call me at work",
+    "call me back", "call me later", "call me tomorrow",
+]
+
+
+def detect_do_not_call(transcript):
+    """True when the person asked not to be contacted again.
+
+    A removal request has to stop the whole sequence, not just this call. Without
+    this, someone who says "stop calling me" stays 'active' and gets dialled up to
+    max_calls more times over the next 7 days, which is a TCPA problem and the
+    fastest way to get the number spam-flagged.
+    """
+    if not transcript:
+        return False
+    text = ' '.join(str(transcript).lower().split())
+
+    # Strip the near-misses first so "call me back tomorrow" can't match "call me"
+    scrubbed = text
+    for friend in DNC_FALSE_FRIENDS:
+        scrubbed = scrubbed.replace(friend, ' ')
+
+    for phrase in DNC_PHRASES:
+        if phrase in scrubbed:
+            print(f"🚫 Do-not-call detected in transcript: '{phrase}'")
+            return True
+    return False
+
+
 def phone_digits(value):
     """Last 10 digits, so '+17026721251', '(702) 672-1251' and '7026721251' compare equal."""
     return re.sub(r'\D', '', value or '')[-10:]
@@ -19107,7 +19150,41 @@ def retell_webhook():
             "i've got you down for", "looking forward to meeting"
         ]
         booked = any(phrase in transcript.lower() for phrase in booking_phrases)
-        
+
+        # ----- DO NOT CALL: this must win over every other outcome -----
+        # Hailey ends the call politely, but that alone leaves the sequence 'active'
+        # and the lead gets dialled again tomorrow. Kill the sequence, flag the
+        # contact, and set DND in GHL so nothing else in the CRM calls them either.
+        if detect_do_not_call(transcript):
+            print(f"[RETELL WEBHOOK] 🚫 DO NOT CALL requested by {contact_id} - stopping everything")
+            try:
+                conn = sqlite3.connect(DB_PATH, timeout=10)
+                cur = conn.cursor()
+                cur.execute("""UPDATE call_sequences SET status = 'dnc'
+                               WHERE ghl_contact_id = ? AND status = 'active'""", (contact_id,))
+                stopped = cur.rowcount
+                to_number = call_data.get('to_number', '')
+                if to_number:
+                    cur.execute("""UPDATE call_sequences SET status = 'dnc'
+                                   WHERE phone = ? AND status = 'active'""", (to_number,))
+                    stopped += cur.rowcount
+                conn.commit()
+                conn.close()
+                print(f"[RETELL WEBHOOK] 🚫 Stopped {stopped} active sequence(s)")
+            except Exception as dnc_err:
+                print(f"[RETELL WEBHOOK] ❌ Could not stop sequence: {dnc_err}")
+
+            try:
+                ghl_update_contact(contact_id, {'dnd': True})
+                ghl_add_tag(contact_id, 'DNC - Do Not Call')
+                ghl_create_note(contact_id, "🚫 DO NOT CALL requested on an AI call. "
+                                            "Sequence stopped and DND set. Do not re-enroll.")
+                print(f"[RETELL WEBHOOK] 🚫 GHL: DND set + tagged")
+            except Exception as ghl_err:
+                print(f"[RETELL WEBHOOK] ❌ Could not set GHL DND: {ghl_err}")
+
+            return jsonify({"status": "dnc", "contact_id": contact_id}), 200
+
         # Determine tag based on outcome
         if status in ["no-answer", "no_answer"]:
             tag = "AI - No Answer"

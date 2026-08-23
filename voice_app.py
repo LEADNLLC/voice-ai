@@ -2283,6 +2283,11 @@ def init_db():
     try:
         c.execute('ALTER TABLE call_sequences ADD COLUMN last_name TEXT')
     except: pass
+    # Which of morning/afternoon/evening the last attempt used, so the loop can
+    # enforce one call per window instead of firing all three in an hour.
+    try:
+        c.execute('ALTER TABLE call_sequences ADD COLUMN last_window TEXT')
+    except: pass
     try:
         c.execute('ALTER TABLE call_sequences ADD COLUMN email TEXT')
     except: pass
@@ -3750,7 +3755,7 @@ def _tz_offset(dt_str):
         return '-06:00'
 
 
-def ghl_create_appointment(contact_id, calendar_id, start_time, end_time, title=None, notes=None):
+def ghl_create_appointment(contact_id, calendar_id, start_time, end_time, title=None, notes=None, address=None):
     """Create an appointment in GoHighLevel calendar"""
     # Stamp the correct offset for the configured timezone, DST-aware.
     if start_time and 'T' in start_time and not ('+' in start_time or 'Z' in start_time):
@@ -3769,7 +3774,12 @@ def ghl_create_appointment(contact_id, calendar_id, start_time, end_time, title=
     }
     if notes:
         data['notes'] = notes
-    
+    # The rep opens the appointment card and needs to know WHERE to drive. Burying the
+    # address in notes means it does not show on the calendar entry - verified in GHL,
+    # the one booked appointment had address="".
+    if address:
+        data['address'] = address
+
     print(f"📅 Creating appointment: {data}")
     result = ghl_request('POST', '/calendars/events/appointments', data)
     print(f"📅 Appointment result: {result}")
@@ -4024,8 +4034,16 @@ def ghl_sync_appointment_to_ghl(appointment):
                 calendar_id=calendar_id,
                 start_time=start_time,
                 end_time=end_time,
-                title=f"AI Appointment - {appointment.get('first_name', 'Customer')}",
-                notes=f"🤖 Booked via Hailey AI\nPhone: {phone}\nAddress: {appointment.get('address', 'N/A')}\nAgent: {appointment.get('agent_type', 'N/A')}"
+                title=f"Solar Assessment - {appointment.get('first_name', 'Customer')}",
+                address=appointment.get('address') or None,
+                notes=(
+                    f"\U0001f916 Booked via Hailey AI\n"
+                    f"Phone: {phone}\n"
+                    f"Address: {appointment.get('address', 'N/A')}\n"
+                    f"Utility bill: {appointment.get('monthly_bill_range') or 'not captured'}\n"
+                    f"Homeowner: {appointment.get('homeowner_status') or 'not captured'}\n"
+                    f"Agent: {appointment.get('agent_type', 'N/A')}"
+                )
             )
             
             if result.get('id') or result.get('event'):
@@ -4089,22 +4107,102 @@ def ghl_update_call_outcome(contact_id, outcome, notes=None):
 
 # Call sequence configuration
 CALL_SEQUENCE_CONFIG = {
+    # THREE attempts a day, one per window, in the LEAD's local time.
+    # Was 6/day on 2-hour intervals - that is a TCPA exposure and it burns the list.
     'time_windows': [
-        {'name': 'morning', 'start': 8, 'end': 10},    # 8am - 10am
-        {'name': 'lunch', 'start': 12, 'end': 13},     # 12pm - 1pm
-        {'name': 'evening', 'start': 17, 'end': 19},   # 5pm - 7pm
+        {'name': 'morning',   'start': 9,  'end': 11},   # 9am - 11am
+        {'name': 'afternoon', 'start': 13, 'end': 16},   # 1pm - 4pm
+        {'name': 'evening',   'start': 17, 'end': 19},   # 5pm - 7pm
     ],
     'max_days': 7,              # Run sequence for 7 days
-    'calls_per_day': 6,         # More calls now with 2-hour intervals
-    'max_calls': 42,            # 6 calls/day × 7 days = 42 total
-    'double_tap': True,         # Call back immediately if no answer
-    'hours_between_calls': 2,   # 🔥 Call every 2 hours until they pick up!
-    'min_hours_between_calls': 2,
+    'calls_per_day': 3,         # one per window
+    'max_calls': 21,            # 3/day x 7 days
+    'double_tap': False,        # no instant redial - the next window is the retry
+    'hours_between_calls': 3,
+    'min_hours_between_calls': 3,
     'blocked_hours_start': 20,  # 8pm - no calls after
     'blocked_hours_end': 9,     # 9am - no calls before
-    'blocked_days': [6],        # Sunday = 6 (0=Monday in some systems)
-    'use_2_hour_intervals': True,  # 🔥 NEW: Use simple 2-hour intervals instead of windows
+    'blocked_days': [6],        # Sunday
+    'use_2_hour_intervals': False,  # use the windows above, one call each
+    'one_call_per_window': True,
 }
+
+# ── GHL pipeline automation ──────────────────────────────────────────────────
+# Pin the pipeline. "Appointment Set" exists in SIX pipelines in this location
+# (MARYLAND, NEW FACEBOOK LEADS, Orlando, Solar Leads Client, TEXAS - SPANISH,
+# ILLINOIS) - an unpinned name search can move a card into the wrong funnel.
+SEQUENCE_PIPELINE_NAME = os.environ.get('SEQUENCE_PIPELINE_NAME', 'Solar Leads Client')
+
+# Stage names to try, in order, for each attempt number. First one that exists
+# in the pinned pipeline wins, so the same code drives the English "Solar Leads
+# Client" board and the Spanish "DENVER 1" board.
+STAGE_BY_ATTEMPT = {
+    1: ['Attempt 1', 'Intento 1 - No Contesto', 'Contacted', 'Intento 1'],
+    2: ['Attempt 2', 'Intento 2 - No Contesto', 'Intento 2'],
+    3: ['Attempt 3', 'Intento 3 - No Contesto', 'Intento 3'],
+    4: ['Intento 4 - No Contesto', 'Attempt 3', 'Intento 4'],
+    5: ['Intento 5+ / Seguimiento', 'No Answer', 'No Contact'],
+}
+# Terminal outcomes. These override the attempt-based stage.
+STAGE_BY_OUTCOME = {
+    'booked':         ['Appointment Set', 'Cita Agendada', 'Appointment Booked'],
+    'callback':       ['Devolver Llamada', 'RESCHEDULE NEEDED', 'Attempt 1'],
+    'not_interested': ['Not Interested', 'No Interesado', 'Opted Out'],
+    'disqualified':   ['Disqualified', 'Descalificado', 'DQ'],
+    'already_solar':  ['Already Solar', 'Descalificado', 'Disqualified'],
+    'dnc':            ['Not Interested', 'No Interesado', 'Opted Out'],
+    'exhausted':      ['No Answer', 'Intento 5+ / Seguimiento', 'No Contact'],
+}
+
+
+def advance_sequence_stage(contact_id, attempt=None, outcome=None):
+    """Move a contact's opportunity to the stage its call history implies.
+
+    outcome wins when set; otherwise the attempt number picks the stage.
+    Tries each alias in order so one code path drives both the English and the
+    Spanish boards. Silent no-op when nothing matches - never raises into the
+    call loop, because a CRM hiccup must not stop the dialer.
+    """
+    if not contact_id:
+        return None
+
+    names = []
+    if outcome:
+        names = STAGE_BY_OUTCOME.get(outcome, [])
+        if not names:
+            print(f"   \u26a0\ufe0f  Unknown sequence outcome {outcome!r} - leaving stage alone")
+            return None
+    elif attempt:
+        names = STAGE_BY_ATTEMPT.get(min(int(attempt), 5), [])
+
+    for name in names:
+        try:
+            pid, sid = ghl_resolve_stage(name, SEQUENCE_PIPELINE_NAME)
+        except Exception as e:
+            print(f"   \u26a0\ufe0f  stage lookup failed for {name!r}: {e}")
+            continue
+        if pid and sid:
+            try:
+                ghl_move_to_stage(contact_id, stage_name=name,
+                                  pipeline_name=SEQUENCE_PIPELINE_NAME)
+                print(f"   \U0001f4cb Stage -> {name} "
+                      f"({'outcome ' + outcome if outcome else 'attempt ' + str(attempt)})")
+                return name
+            except Exception as e:
+                print(f"   \u26a0\ufe0f  stage move failed for {name!r}: {e}")
+                return None
+
+    print(f"   \u26a0\ufe0f  No stage in '{SEQUENCE_PIPELINE_NAME}' matched any of {names}")
+    return None
+
+
+def next_call_window(now=None):
+    """The window a call placed right now belongs to, or None if outside all of them."""
+    now = now or get_lead_local_time()
+    for w in CALL_SEQUENCE_CONFIG['time_windows']:
+        if w['start'] <= now.hour < w['end']:
+            return w['name']
+    return None
 
 # 🔥 SMS FOLLOW-UP TEMPLATES - Funny, Sarcastic, ALWAYS 2 Appointment Options!
 # Matches the Facebook ad energy: "$400 BILL?! LOL"
@@ -4863,7 +4961,7 @@ def process_scheduled_calls():
         
         # Get pending calls that are due - LIMIT 1 to prevent spam
         c.execute('''SELECT sc.*, cs.phone, cs.first_name, cs.address, cs.ghl_contact_id, cs.agent_type, 
-                    cs.calls_made, cs.current_day, cs.calls_today, cs.max_days, cs.last_call_date, cs.last_call_at
+                    cs.calls_made, cs.current_day, cs.calls_today, cs.max_days, cs.last_call_date, cs.last_call_at, cs.last_window
             FROM scheduled_calls sc
             JOIN call_sequences cs ON sc.sequence_id = cs.id
             WHERE sc.status = ? AND sc.scheduled_time <= ? AND cs.status = ?
@@ -4906,6 +5004,18 @@ def process_scheduled_calls():
             if calls_today >= CALL_SEQUENCE_CONFIG['calls_per_day']:
                 print(f"⏸️ Skipping {call['phone']} - already made {calls_today} calls today")
                 continue
+
+            # ONE call per window. Without this the loop can fire all three of a
+            # day's attempts inside the same hour, which reads as harassment and
+            # is what the 3/day cadence exists to prevent.
+            window = next_call_window()
+            if CALL_SEQUENCE_CONFIG.get('one_call_per_window'):
+                if not window:
+                    print(f"⏸️ Skipping {call['phone']} - outside all call windows")
+                    continue
+                if call.get('last_window') == window and call.get('last_call_date') == today:
+                    print(f"⏸️ Skipping {call['phone']} - already called in the {window} window")
+                    continue
             
             print(f"📞 Day {current_day}/7 - Call {calls_today + 1}/3 for {call['phone']}...")
             
@@ -4939,12 +5049,22 @@ def process_scheduled_calls():
                     calls_today = ?, 
                     current_day = ?,
                     last_call_at = ?,
-                    last_call_date = ?
+                    last_call_date = ?,
+                    last_window = ?
                     WHERE id = ?''',
-                    (calls_today + 1, current_day, now.isoformat(), today, call['sequence_id']))
-                
+                    (calls_today + 1, current_day, now.isoformat(), today,
+                     window, call['sequence_id']))
+
+                # Walk the GHL card forward one attempt stage. Best-effort: a CRM
+                # failure must never stop the dialer.
+                try:
+                    attempts = (call.get('calls_made') or 0) + 1
+                    advance_sequence_stage(call.get('ghl_contact_id'), attempt=attempts)
+                except Exception as e:
+                    print(f"   \u26a0\ufe0f  stage advance failed: {e}")
+
                 processed += 1
-                print(f"✅ Call initiated: {result.get('call_id')}")
+                print(f"✅ Call initiated ({window} window): {result.get('call_id')}")
             else:
                 # Mark as failed, will retry
                 c.execute('UPDATE scheduled_calls SET status = ?, error = ? WHERE id = ?',
@@ -5162,6 +5282,21 @@ def handle_call_completed(call_id, outcome, ghl_contact_id=None):
             target_stage = stage_mapping.get(outcome)
             if target_stage:
                 move_to_stage(target_stage)
+
+            # Also drive the pinned sequence pipeline through the alias table, so
+            # the Spanish board (Cita Agendada / No Interesado / Descalificado)
+            # advances from the same outcome the English one does.
+            outcome_key = {
+                'appointment_set': 'booked', 'appointment_booked': 'booked',
+                'not_interested': 'not_interested', 'wrong_number': 'disqualified',
+                'dnc': 'dnc', 'already_solar': 'already_solar',
+                'bad_credit': 'disqualified', 'disqualified': 'disqualified',
+            }.get(outcome)
+            if outcome_key:
+                try:
+                    advance_sequence_stage(seq.get('ghl_contact_id'), outcome=outcome_key)
+                except Exception as e:
+                    print(f"   \u26a0\ufe0f  outcome stage move failed: {e}")
             
             # Update tracking fields
             update_tracking_fields(seq['calls_made'] + 1, outcome)
@@ -5218,6 +5353,10 @@ def handle_call_completed(call_id, outcome, ghl_contact_id=None):
         # Check if we've completed all 7 days (max_calls = 21 = 7 days x 3 calls)
         if seq['calls_made'] >= seq.get('max_calls', 21) or (current_day >= seq.get('max_days', 7) and calls_today >= 3):
             c.execute('UPDATE call_sequences SET status = ? WHERE id = ?', ('max_calls_reached', seq['id']))
+            try:
+                advance_sequence_stage(seq.get('ghl_contact_id'), outcome='exhausted')
+            except Exception as e:
+                print(f"   \u26a0\ufe0f  exhausted stage move failed: {e}")
             conn.commit()
             conn.close()
             

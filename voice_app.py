@@ -4200,6 +4200,32 @@ def get_lead_local_time():
         return get_pacific_time()
 
 
+def assert_dynamic_vars(dv, where=""):
+    """Log and repair the variables the Retell prompt actually depends on.
+
+    If first_name or address are missing, the agent reads the raw template out
+    loud - "is this open-brace first_name close-brace" - and the lead hangs up.
+    That shipped once already. This makes it loud in the logs and self-healing.
+    """
+    required = ('first_name', 'address', 'has_address', 'phone')
+    missing = [k for k in required if k not in dv]
+    if missing:
+        print(f"   \u26a0\ufe0f  MISSING RETELL VARS {missing} at {where} - agent would speak the template")
+    dv.setdefault('first_name', 'there')
+    dv.setdefault('address', '')
+    dv.setdefault('has_address', 'yes' if dv.get('address') else 'no')
+    dv.setdefault('phone', '')
+    # Scrub anything that would be spoken literally.
+    for k, v in list(dv.items()):
+        sv = '' if v is None else str(v)
+        if sv.strip() in ('undefined', 'null', 'None') or '{{' in sv:
+            print(f"   \u26a0\ufe0f  Retell var {k}={sv!r} would be spoken literally - blanking it")
+            dv[k] = ''
+    dv['has_address'] = 'yes' if dv.get('address') else 'no'
+    print(f"   \U0001f9ee Retell vars: first_name={dv['first_name']!r} address={dv['address']!r} has_address={dv['has_address']}")
+    return dv
+
+
 def build_time_vars():
     """Date/time context for the Retell agent, in the LEAD's timezone.
 
@@ -6361,6 +6387,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
         # What day/time it actually is, in the lead's timezone. Without this the
         # agent offers "tomorrow" on a Saturday and then argues about Sunday.
         dynamic_vars.update(build_time_vars())
+        assert_dynamic_vars(dynamic_vars, "make_call")
         
         # Simple create-phone-call API - works with Retell-native numbers!
         response = requests.post(
@@ -17737,7 +17764,15 @@ details summary::-webkit-details-marker{{display:none}}
                                 "company_name": company,
                                 "industry": industry,
                                 "agent_name": agent_name,
-                                "customer_name": "there",
+                                # WITHOUT THESE the agent speaks the literal "{{first_name}}"
+                                # and "{{address}}" out loud. That happened on a live call
+                                # (Vicky Grace) and the lead hung up. EVERY dial path must
+                                # send first_name / address / has_address / phone.
+                                "first_name": d.get('name') or d.get('first_name') or 'there',
+                                "address": d.get('address', ''),
+                                "has_address": "yes" if d.get('address') else "no",
+                                "phone": formatted_phone,
+                                "customer_name": d.get('name') or 'there',
                                 "call_type": call_type,
                                 "call_purpose": call_purpose,
                                 "greeting_style": greeting_style,
@@ -19606,6 +19641,7 @@ def make_call_with_verified_caller_id(phone, name="there", agent_type="solar", g
         "ghl_contact_id": ghl_contact_id or ""
     }
     dynamic_vars.update(build_time_vars())
+    assert_dynamic_vars(dynamic_vars, "register_phone_call")
     
     try:
         # Step 1: Register call with Retell to get WebSocket URL

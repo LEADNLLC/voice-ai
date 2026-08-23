@@ -3548,6 +3548,35 @@ def ghl_get_opportunities(pipeline_id=None, stage_id=None, contact_id=None):
         params['contact_id'] = contact_id
     return ghl_request('GET', '/opportunities/search', params=params)
 
+PLACEHOLDER_NAMES = {'there', 'customer', 'lead', 'new lead', 'friend', 'client',
+                     'unknown', 'none', 'null', 'undefined', 'n/a'}
+
+
+def opportunity_display_name(first_name=None, last_name=None, phone=None, suffix=None):
+    """A name a human can read on a pipeline card.
+
+    Placeholders leak: make_call() defaults name="there", and on inbound calls
+    with no caller ID that string was landing on the opportunity itself, so the
+    Solar Leads Client board filled up with cards literally titled "there" -
+    13 of them in one 100-card sample, almost all inbound callbacks, which are
+    the warmest leads there are.
+
+    Falls back to the formatted phone number, which is always more useful than
+    a placeholder, and only then to "New Lead".
+    """
+    full = ' '.join(x for x in [(first_name or '').strip(), (last_name or '').strip()] if x).strip()
+    if full and full.lower() not in PLACEHOLDER_NAMES:
+        return f"{full} - {suffix}" if suffix else full
+
+    digits = re.sub(r'\D', '', phone or '')
+    if len(digits) >= 10:
+        d = digits[-10:]
+        pretty = f"({d[:3]}) {d[3:6]}-{d[6:]}"
+        return f"{pretty} - {suffix}" if suffix else pretty
+
+    return f"New Lead - {suffix}" if suffix else "New Lead"
+
+
 def ghl_create_opportunity(contact_id, pipeline_id, stage_id, name, monetary_value=0):
     """Create an opportunity in a pipeline"""
     return ghl_request('POST', '/opportunities/', {
@@ -3720,9 +3749,9 @@ def ghl_move_to_stage(contact_id, stage_name=None, pipeline_name=None, monetary_
 
     # No opportunity yet - create one directly in the target stage
     contact = ghl_get_contact(contact_id)
-    name = (contact.get('name')
-            or f"{contact.get('firstName', '')} {contact.get('lastName', '')}".strip()
-            or 'New Lead')
+    name = opportunity_display_name(
+        contact.get('name') or contact.get('firstName'),
+        contact.get('lastName'), contact.get('phone'))
     result = ghl_create_opportunity(contact_id, pipeline_id, stage_id, name,
                                     monetary_value or 0)
     opp_id = (result or {}).get('opportunity', {}).get('id') if isinstance(result, dict) else None
@@ -18351,7 +18380,7 @@ Let's close some deals! 🚀"""
                                         contact_id=contact_id,
                                         pipeline_id=GHL_PIPELINE_ID,
                                         stage_id=new_lead_stage_id,
-                                        name=f"{first_name} {last_name}".strip() or first_name or "New Lead"
+                                        name=opportunity_display_name(first_name, last_name, phone)
                                     )
                                     print(f"📊 Created opportunity in pipeline: {opp_result}")
                                 else:
@@ -18940,7 +18969,7 @@ Let's close some deals! 🚀"""
                                         contact_id=ghl_contact_id,
                                         pipeline_id=GHL_PIPELINE_ID,
                                         stage_id=target_stage_id,
-                                        name=f"{customer_name or 'Lead'} - Solar"
+                                        name=opportunity_display_name(customer_name, None, phone, suffix='Solar')
                                     )
                                     if opp_result.get('opportunity') or opp_result.get('id'):
                                         print(f"✅ Created opportunity in {pipeline_stage}")

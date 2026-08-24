@@ -16350,10 +16350,8 @@ function validate(){
 const DOWL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
-/* API base. Empty = same origin (the app serves this page). If you ever host the
-   page on a different domain, set this to your app URL, e.g.
-   const API='https://your-app.up.railway.app'; */
-const API='';
+/* API base — your voicelab app on Railway (where bookings are sent). */
+const API='https://www.voicelab.live';
 
 /* Build a naive wall-clock ISO ('YYYY-MM-DDTHH:MM:00') from the chosen day + slot.
    Built from the displayed date parts (not toISOString), so the day never shifts

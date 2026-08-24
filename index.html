@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>American Home Energy — Free Energy Report</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#E8863A" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" />
+
+<style>
+:root{
+  --paper:#FBF9F5; --card:#FFFFFF; --ink:#1C2433; --ink-soft:#3B4557;
+  --muted:#6B6559; --line:#EAE4DA; --line-2:#DED6C8;
+  --amber:#E8863A; --amber-deep:#C25E1E; --amber-wash:#FBEBD9;
+  --brick:#C1443B; --pine:#2E7D5B; --pine-wash:#E4F0EA;
+  --ground:#F3EEE5;
+  --shadow:0 1px 2px rgba(28,36,51,.04),0 8px 30px rgba(28,36,51,.08);
+  --shadow-lg:0 2px 6px rgba(28,36,51,.06),0 24px 60px rgba(28,36,51,.16);
+  --r:16px; --r-sm:11px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#12161F; --card:#1B212D; --ink:#F1ECE3; --ink-soft:#C7CDD8;
+    --muted:#9A93866; --muted:#948C7E; --line:#2A313F; --line-2:#37404F;
+    --amber:#F0954A; --amber-deep:#E8863A; --amber-wash:#2A2418;
+    --brick:#E4695F; --pine:#4FB187; --pine-wash:#17281F;
+    --ground:#0D1017;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 30px rgba(0,0,0,.35);
+    --shadow-lg:0 2px 6px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#12161F; --card:#1B212D; --ink:#F1ECE3; --ink-soft:#C7CDD8;
+  --muted:#948C7E; --line:#2A313F; --line-2:#37404F;
+  --amber:#F0954A; --amber-deep:#E8863A; --amber-wash:#2A2418;
+  --brick:#E4695F; --pine:#4FB187; --pine-wash:#17281F;
+  --ground:#0D1017;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 30px rgba(0,0,0,.35);
+  --shadow-lg:0 2px 6px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"Hanken Grotesk",system-ui,-apple-system,sans-serif;
+  font-size:16px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  display:flex;justify-content:center;
+  padding:0;min-height:100vh;
+}
+.shell{width:100%;max-width:480px;background:var(--paper);min-height:100vh;
+  position:relative;overflow:hidden;box-shadow:var(--shadow-lg)}
+@media(min-width:520px){body{padding:24px 16px}
+  .shell{min-height:auto;border-radius:24px;margin:auto}}
+
+/* ---- top bar ---- */
+.bar{display:flex;align-items:center;gap:10px;padding:16px 20px 12px}
+.logo{width:30px;height:30px;border-radius:8px;background:var(--ink);
+  display:grid;place-items:center;flex:none}
+.logo span{color:var(--paper);font-weight:700;font-size:15px;font-family:"Fraunces",serif}
+.brand{font-weight:700;letter-spacing:.02em;font-size:15px}
+.brand b{color:var(--amber-deep)}
+.loc{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.loc svg{width:12px;height:12px}
+
+/* ---- progress ---- */
+.prog{height:3px;background:var(--line);position:relative}
+.prog i{position:absolute;left:0;top:0;height:100%;background:var(--amber);
+  border-radius:3px;transition:width .5s cubic-bezier(.4,0,.1,1);width:14%}
+
+/* ---- steps ---- */
+.steps{position:relative}
+.step{padding:26px 22px 30px;display:none;animation:rise .45s cubic-bezier(.2,.7,.2,1) both}
+.step.on{display:block}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.step,.prog i{animation:none;transition:none}}
+
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--amber-deep);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--amber)}
+h1{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:30px;line-height:1.08;
+  letter-spacing:-.01em;text-wrap:balance;color:var(--ink)}
+h1 em{font-style:italic;color:var(--amber-deep)}
+.sub{color:var(--ink-soft);margin-top:12px;font-size:15.5px;max-width:40ch}
+.instruct{margin-top:18px;font-size:13px;font-weight:600;color:var(--muted);
+  display:flex;align-items:center;gap:8px}
+.instruct .n{width:20px;height:20px;border-radius:50%;background:var(--amber-wash);
+  color:var(--amber-deep);display:grid;place-items:center;font-size:12px;flex:none}
+
+/* ---- choice buttons ---- */
+.choices{display:flex;flex-direction:column;gap:11px;margin-top:20px}
+.choice{display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  background:var(--card);border:1.5px solid var(--line-2);border-radius:var(--r);
+  padding:17px 18px;cursor:pointer;font:inherit;color:var(--ink);
+  transition:border-color .15s,transform .12s,box-shadow .15s}
+.choice:hover{border-color:var(--amber);transform:translateY(-1px);box-shadow:var(--shadow)}
+.choice:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
+.choice .ic{width:40px;height:40px;border-radius:11px;background:var(--ground);
+  display:grid;place-items:center;flex:none;font-size:20px}
+.choice .tx{flex:1}
+.choice .tx b{display:block;font-weight:600;font-size:16px}
+.choice .tx small{color:var(--muted);font-size:13px}
+.choice .arw{color:var(--line-2);transition:transform .15s,color .15s}
+.choice:hover .arw{color:var(--amber);transform:translateX(3px)}
+
+/* ---- bill slider + chart ---- */
+.billval{font-family:"Fraunces",serif;font-weight:600;font-size:44px;color:var(--ink);
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:6px}
+.billval small{font-size:20px;color:var(--muted);font-weight:500}
+.rng{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:6px;
+  background:linear-gradient(90deg,var(--amber) 0%,var(--amber) var(--pct,40%),var(--line) var(--pct,40%),var(--line) 100%);
+  margin:18px 0 4px;cursor:pointer}
+.rng::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;
+  background:var(--card);border:3px solid var(--amber);box-shadow:var(--shadow);cursor:grab}
+.rng::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:var(--card);
+  border:3px solid var(--amber);box-shadow:var(--shadow);cursor:grab}
+.rlabels{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.chartwrap{margin-top:22px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r);padding:16px 16px 12px}
+.charttop{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.charttop .t{font-size:12.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+canvas{width:100%;height:132px;display:block}
+.legend{display:flex;gap:16px;margin-top:8px;font-size:12.5px;color:var(--ink-soft)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.note{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.45}
+
+/* ---- calendar ---- */
+.days{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:20px}
+.day{background:var(--card);border:1.5px solid var(--line-2);border-radius:var(--r-sm);
+  padding:11px 4px;cursor:pointer;text-align:center;font:inherit;color:var(--ink);
+  transition:border-color .14s,background .14s}
+.day:hover{border-color:var(--amber)}
+.day:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
+.day.sel{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.day .dow{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.day.sel .dow{color:rgba(255,255,255,.6)}
+.day .dnum{font-family:"Fraunces",serif;font-weight:600;font-size:21px;margin-top:2px}
+.daysec{margin-top:22px}
+.daysec-h{display:flex;align-items:baseline;gap:9px;font-family:"Fraunces",serif;
+  font-weight:600;font-size:19px;color:var(--ink)}
+.daysec-h span{font-family:"Hanken Grotesk",sans-serif;font-size:13px;font-weight:600;
+  color:var(--muted);letter-spacing:.02em}
+.slots{margin-top:12px;display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
+.slot{background:var(--card);border:1.5px solid var(--line-2);border-radius:var(--r);
+  padding:20px 10px;cursor:pointer;font:inherit;font-weight:600;font-size:17px;color:var(--ink);
+  min-height:60px;display:flex;align-items:center;justify-content:center;
+  transition:border-color .14s,transform .12s,background .14s,box-shadow .15s}
+.slot:hover{border-color:var(--amber);transform:translateY(-1px);box-shadow:var(--shadow)}
+.slot:focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
+.slot.sel{background:var(--amber);border-color:var(--amber);color:#fff;box-shadow:0 6px 16px rgba(232,134,58,.32)}
+
+/* ---- form ---- */
+.field{margin-top:16px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.field input{width:100%;background:var(--card);border:1.5px solid var(--line-2);
+  border-radius:var(--r-sm);padding:14px 15px;font:inherit;font-size:16px;color:var(--ink)}
+.field input::placeholder{color:var(--muted);opacity:.7}
+.field input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-wash)}
+.field[hidden]{display:none}
+
+/* ---- CTA ---- */
+.cta{width:100%;background:var(--amber);color:#fff;border:none;border-radius:var(--r);
+  padding:17px;font:inherit;font-weight:700;font-size:16.5px;cursor:pointer;margin-top:22px;
+  box-shadow:0 6px 18px rgba(232,134,58,.35);transition:transform .12s,box-shadow .15s,background .15s;
+  display:flex;align-items:center;justify-content:center;gap:9px}
+.cta:hover{background:var(--amber-deep);transform:translateY(-1px);box-shadow:0 10px 26px rgba(232,134,58,.42)}
+.cta:active{transform:translateY(0)}
+.cta:disabled{background:var(--line-2);color:var(--muted);box-shadow:none;cursor:not-allowed;transform:none}
+.back{background:none;border:none;color:var(--muted);font:inherit;font-size:13.5px;font-weight:600;
+  cursor:pointer;padding:14px 0 0;display:inline-flex;align-items:center;gap:6px}
+.back:hover{color:var(--ink)}
+.trust{margin-top:18px;display:flex;flex-wrap:wrap;gap:14px 18px;font-size:12.5px;color:var(--muted)}
+.trust span{display:flex;align-items:center;gap:6px}
+.trust svg{width:14px;height:14px;color:var(--pine);flex:none}
+
+/* ---- confirmation ---- */
+.confirm{text-align:center;padding:34px 22px 36px}
+.seal{width:66px;height:66px;border-radius:50%;background:var(--pine-wash);
+  display:grid;place-items:center;margin:0 auto 18px;animation:pop .5s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes pop{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+.seal svg{width:32px;height:32px;color:var(--pine)}
+.confirm h1{font-size:27px}
+.appt{margin:22px 0;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:18px 20px;text-align:left;display:flex;align-items:center;gap:16px}
+.appt .cal{width:52px;height:56px;border-radius:11px;overflow:hidden;flex:none;border:1px solid var(--line-2);text-align:center}
+.appt .cal .m{background:var(--brick);color:#fff;font-size:11px;font-weight:700;padding:3px 0;text-transform:uppercase;letter-spacing:.05em}
+.appt .cal .d{font-family:"Fraunces",serif;font-weight:600;font-size:24px;padding:5px 0;color:var(--ink)}
+.appt .info b{display:block;font-size:16px;font-weight:600}
+.appt .info small{color:var(--muted);font-size:13.5px}
+.rep{display:flex;align-items:center;gap:13px;background:var(--amber-wash);border-radius:var(--r);
+  padding:14px 16px;text-align:left;margin-top:2px}
+.rep .av{width:44px;height:44px;border-radius:50%;background:var(--amber-deep);color:#fff;
+  display:grid;place-items:center;font-family:"Fraunces",serif;font-weight:600;font-size:20px;flex:none}
+.rep .rx b{display:block;font-size:14.5px;font-weight:600;color:var(--ink)}
+.rep .rx small{font-size:12.5px;color:var(--amber-deep)}
+.expect{text-align:left;margin-top:22px}
+.expect .h{font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px}
+.expect ul{list-style:none;display:flex;flex-direction:column;gap:11px}
+.expect li{display:flex;gap:11px;font-size:14.5px;color:var(--ink-soft)}
+.expect li svg{width:17px;height:17px;color:var(--pine);flex:none;margin-top:2px}
+
+.disq{text-align:center;padding:40px 26px}
+.disq .seal{background:var(--ground)}
+.disq .seal svg{color:var(--muted)}
+
+/* ---- local trust footer ---- */
+.foot{border-top:1px solid var(--line);margin-top:6px;padding:16px 22px 22px;
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:12.5px;color:var(--muted)}
+.foot a{color:var(--ink-soft);font-weight:600;text-decoration:none}
+.foot a:hover{color:var(--amber-deep)}
+.cobadge{display:flex;align-items:center;gap:7px;font-weight:600;color:var(--ink-soft)}
+.cobadge svg{width:18px;height:18px;flex:none}
+.fdot{color:var(--line-2)}
+.ffine{flex-basis:100%;font-size:11.5px;color:var(--muted)}
+
+/* ---- booking / error states ---- */
+.cta.loading{position:relative;color:transparent}
+.cta.loading::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;
+  border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.errbox{margin-top:14px;background:var(--amber-wash);border:1px solid var(--amber);border-radius:var(--r-sm);
+  padding:12px 14px;font-size:13.5px;color:var(--ink-soft);display:none}
+.errbox.on{display:block}
+</style>
+</head>
+<body>
+
+<div class="shell" role="main">
+  <div class="bar">
+    <div class="logo"><span>A</span></div>
+    <div class="brand">American <b>Home Energy</b></div>
+    <div class="loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.3-7-11a7 7 0 0 1 14 0c0 4.7-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Serving Denver</div>
+  </div>
+  <div class="prog"><i id="pbar"></i></div>
+
+  <div class="steps">
+
+    <!-- STEP 1 -->
+    <section class="step on" data-step="1">
+      <div class="eyebrow"><span class="dot"></span>Free · takes 60 seconds</div>
+      <h1>Your Xcel bill goes up <em>September 1st</em>.</h1>
+      <p class="sub">See what a fixed rate would look like for your home before it does. Your quick energy report covers a renewable energy option that locks in your rate, and a local rep drops it by. No cost, nothing to sign.</p>
+      <div class="instruct"><span class="n">1</span>First — do you own your home?</div>
+      <div class="choices">
+        <button class="choice" onclick="own(true)">
+          <div class="ic">🏡</div>
+          <div class="tx"><b>I own it</b><small>Great — this is built for homeowners</small></div>
+          <div class="arw"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg></div>
+        </button>
+        <button class="choice" onclick="own(false)">
+          <div class="ic">🔑</div>
+          <div class="tx"><b>I rent</b><small>We'll point you the right way</small></div>
+          <div class="arw"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg></div>
+        </button>
+      </div>
+      <div class="trust">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>No loan, no money down</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Local Denver reps</span>
+      </div>
+    </section>
+
+    <!-- STEP 2 : bill + chart -->
+    <section class="step" data-step="2">
+      <div class="eyebrow"><span class="dot"></span>Your bill</div>
+      <h1>What's your electric bill about?</h1>
+      <div class="instruct"><span class="n">2</span>Drag to your monthly bill</div>
+      <div class="billval">$<span id="bnum">150</span><small>/mo</small></div>
+      <input class="rng" id="bill" type="range" min="80" max="400" step="5" value="150" oninput="drawBill()" aria-label="Monthly electric bill" />
+      <div class="rlabels"><span>$80</span><span>$400+</span></div>
+
+      <div class="chartwrap">
+        <div class="charttop"><span class="t">Next 5 years, if Xcel keeps climbing</span></div>
+        <canvas id="chart" width="800" height="264" aria-label="Projected bill chart"></canvas>
+        <div class="legend">
+          <span><i style="background:var(--brick)"></i>Xcel, rising</span>
+          <span><i style="background:var(--amber)"></i>Rate locked in</span>
+        </div>
+        <p class="note" id="cnote"></p>
+      </div>
+      <button class="cta" onclick="go(3)">See my available times
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg></button>
+      <button class="back" onclick="go(1)">← Back</button>
+    </section>
+
+    <!-- STEP 3 : calendar -->
+    <section class="step" data-step="3">
+      <div class="eyebrow"><span class="dot"></span>Pick a time</div>
+      <h1>When can Daniel <em>swing by?</em></h1>
+      <p class="sub">He's a local rep covering your neighborhood this week. About fifteen minutes at your door, he walks you through your report. No pressure, nothing to sign.</p>
+      <div class="rep" style="margin-top:16px">
+        <div class="av">D</div>
+        <div class="rx"><b>Daniel · your local rep</b><small>Local and friendly, and he'll have his American Home Energy ID on him.</small></div>
+      </div>
+      <div class="instruct"><span class="n">3</span>Tap the time that works</div>
+      <div id="slotDays"></div>
+      <button class="cta" id="timeCta" disabled onclick="go(4)">Continue
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg></button>
+      <button class="back" onclick="go(2)">← Back</button>
+    </section>
+
+    <!-- STEP 4 : contact -->
+    <section class="step" data-step="4">
+      <div class="eyebrow"><span class="dot"></span>Last step</div>
+      <h1 id="s4title">Where should Daniel come?</h1>
+      <p class="sub" id="s4sub">Just your details so Daniel can bring your report to the door and confirm your time.</p>
+      <form id="leadForm" autocomplete="on" onsubmit="book();return false;" style="margin-top:20px">
+        <div class="field"><label for="fn">First name</label><input id="fn" name="fname" placeholder="Your first name" oninput="validate()" autocomplete="given-name" autocapitalize="words" /></div>
+        <div class="field"><label for="ph">Cell phone</label><input id="ph" name="phone" type="tel" inputmode="tel" placeholder="(720) 000-0000" oninput="validate()" autocomplete="tel" /></div>
+        <div class="field"><label for="em">Email</label><input id="em" name="email" type="email" inputmode="email" placeholder="you@email.com" oninput="validate()" autocomplete="email" autocapitalize="off" spellcheck="false" /></div>
+        <div class="field"><label for="addr">Home address</label><input id="addr" name="address" placeholder="123 Main St, Denver" oninput="validate()" autocomplete="street-address" /></div>
+        <button class="cta" id="bookCta" type="submit" disabled>Confirm my visit
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></button>
+      </form>
+      <div class="errbox" id="errbox">That didn't go through — please tap Confirm again. If it keeps happening, call or text us at <b>(720) 605-4003</b> and we'll get you booked.</div>
+      <div class="trust">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>We never share your info</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Cancel anytime</span>
+      </div>
+      <button class="back" onclick="go(3)">← Back</button>
+    </section>
+
+  </div>
+
+  <!-- CONFIRM (own path) -->
+  <section class="step confirm" data-step="done">
+    <div class="seal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>
+    <h1 id="doneName">You're booked!</h1>
+    <p class="sub" style="margin:10px auto 0">Daniel will text you a quick confirmation. Here's what's set:</p>
+    <div class="appt">
+      <div class="cal"><div class="m" id="cM">MON</div><div class="d" id="cD">12</div></div>
+      <div class="info"><b id="cWhen">Monday at 6:00 PM</b><small id="cWhere">Your home · about 15 minutes</small></div>
+    </div>
+    <div class="rep">
+      <div class="av">D</div>
+      <div class="rx"><b>Daniel · your local rep</b><small>Covering Denver this week</small></div>
+    </div>
+    <div class="expect">
+      <div class="h">What happens</div>
+      <ul>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M20 6L9 17l-5-5"/></svg>He brings your energy report and looks at your bill + meter</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M20 6L9 17l-5-5"/></svg>Shows what a fixed rate would look like for your place</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M20 6L9 17l-5-5"/></svg>No cost, nothing to sign. If it's not a fit, he'll tell you straight</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- RENTER path -->
+  <section class="step disq" data-step="rent">
+    <div class="seal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 8v5M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg></div>
+    <h1 style="font-size:25px">Thanks for checking!</h1>
+    <p class="sub" style="margin:12px auto 0">This particular program is just for homeowners, since it goes with the house. If you ever buy, we'd love to help — come back anytime.</p>
+  </section>
+
+  <footer class="foot">
+    <span class="cobadge">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#0B3B8C"/><path d="M17 8.4a6 6 0 1 0 0 7.2" fill="none" stroke="#BF2C34" stroke-width="3.4" stroke-linecap="round"/><circle cx="12" cy="12" r="2.5" fill="#F2C230"/></svg>
+      Denver, Colorado
+    </span>
+    <span class="fdot">·</span>
+    <span>Questions? Call or text <a href="tel:+17206054003">(720) 605-4003</a></span>
+    <span class="ffine">American Home Energy · locally based in Denver</span>
+  </footer>
+</div>
+
+<script>
+const state={own:null,bill:150,day:null,slot:null,fn:'',ph:'',em:'',addr:'',cid:''};
+const $=s=>document.querySelector(s);
+const stepsEl=[...document.querySelectorAll('.step')];
+const order={1:1,2:2,3:3,4:4};
+
+function show(key){
+  stepsEl.forEach(s=>s.classList.toggle('on',s.dataset.step==String(key)));
+  const p=order[key]?order[key]/4*100:100;
+  $('#pbar').style.width=p+'%';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function go(n){show(n); if(n==3&&!$('#slotDays').children.length) buildTimes();}
+function own(v){state.own=v; if(!v){show('rent');return;} show(2); drawBill();}
+
+/* ---------- bill projection ---------- */
+function drawBill(){
+  const b=+$('#bill').value; state.bill=b;
+  $('#bnum').textContent=b;
+  const pct=((b-80)/(400-80))*100;
+  $('#bill').style.setProperty('--pct',pct+'%');
+  const cv=$('#chart'),x=cv.getContext('2d');
+  const W=cv.width,H=cv.height,pad=30;
+  x.clearRect(0,0,W,H);
+  const css=getComputedStyle(document.documentElement);
+  const brick=css.getPropertyValue('--brick').trim();
+  const amber=css.getPropertyValue('--amber').trim();
+  const line=css.getPropertyValue('--line').trim();
+  const muted=css.getPropertyValue('--muted').trim();
+  const yrs=5, rise=0.068; // ~6.8%/yr, illustrative of recent Xcel trend
+  const rising=[...Array(yrs+1)].map((_,i)=>b*Math.pow(1+rise,i));
+  const max=rising[yrs]*1.08;
+  const px=i=>pad+ (i/yrs)*(W-pad*2);
+  const py=v=>H-pad-(v/max)*(H-pad*1.5);
+  // grid baseline
+  x.strokeStyle=line;x.lineWidth=1;
+  x.beginPath();x.moveTo(pad,H-pad);x.lineTo(W-pad,H-pad);x.stroke();
+  // locked (flat) area
+  x.beginPath();x.moveTo(px(0),py(b));
+  for(let i=1;i<=yrs;i++)x.lineTo(px(i),py(b));
+  x.lineTo(px(yrs),H-pad);x.lineTo(px(0),H-pad);x.closePath();
+  x.fillStyle=amber+'22';x.fill();
+  // locked line
+  x.beginPath();x.moveTo(px(0),py(b));for(let i=1;i<=yrs;i++)x.lineTo(px(i),py(b));
+  x.strokeStyle=amber;x.lineWidth=3;x.setLineDash([6,5]);x.stroke();x.setLineDash([]);
+  // rising line
+  x.beginPath();x.moveTo(px(0),py(rising[0]));
+  for(let i=1;i<=yrs;i++)x.lineTo(px(i),py(rising[i]));
+  x.strokeStyle=brick;x.lineWidth=3.5;x.lineJoin='round';x.stroke();
+  // endpoint dot + label
+  x.fillStyle=brick;x.beginPath();x.arc(px(yrs),py(rising[yrs]),5,0,7);x.fill();
+  x.fillStyle=brick;x.font='700 15px "Hanken Grotesk",sans-serif';x.textAlign='right';
+  x.fillText('$'+Math.round(rising[yrs])+'/mo',px(yrs)-2,py(rising[yrs])-12);
+  x.fillStyle=muted;x.font='600 11px "Hanken Grotesk",sans-serif';x.textAlign='left';
+  x.fillText('now',px(0),H-pad+16);x.textAlign='right';x.fillText('5 yrs',px(yrs),H-pad+16);
+  const diff=Math.round(rising[yrs]-b);
+  $('#cnote').textContent=`At today's pace, that's about $${diff} more a month in 5 years — for the same house. A locked rate holds flat. Illustrative only; your report shows real numbers.`;
+}
+
+/* ---------- calendar ---------- */
+const SLOTS=[
+  {label:'10:00 AM',h:10},{label:'2:00 PM',h:14},{label:'4:00 PM',h:16},
+  {label:'5:00 PM',h:17},{label:'6:00 PM',h:18},{label:'7:00 PM',h:19}
+];
+const LEAD_HOURS=2; // earliest a slot can be booked from right now
+const isSameDay=(a,b)=>a.toDateString()===b.toDateString();
+
+/* Slots available on a given day. Today is filtered to what's still far enough
+   out — never offer a time that's already passed or is minutes away. */
+function slotsFor(d){
+  const now=new Date();
+  if(!isSameDay(d,now)) return SLOTS.slice();
+  const minH=now.getHours()+LEAD_HOURS+(now.getMinutes()>0?1:0);
+  return SLOTS.filter(s=>s.h>=minH);
+}
+
+/* One tap books it: show real time buttons under Today and Tomorrow.
+   No day-then-time two-step. Today is filtered to slots still far enough out;
+   if today's gone, the next open day fills the second slot. */
+function buildTimes(){
+  const wrap=$('#slotDays');wrap.innerHTML='';
+  const now=new Date();
+  const DOWL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const days=[];let off=0;
+  while(days.length<2 && off<10){
+    const d=new Date(now);d.setDate(now.getDate()+off);off++;
+    if(d.getDay()===0)continue;         // skip Sunday
+    const slots=slotsFor(d);
+    if(!slots.length)continue;          // today already too late
+    days.push({d,slots});
+  }
+  if(!days.length){
+    wrap.innerHTML='<p class="sub" style="margin-top:14px">We’re full for today and tomorrow. Call or text us at <b>(720) 605-4003</b> and we’ll find you a time.</p>';
+    return;
+  }
+  const tomorrow=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+  days.forEach(({d,slots})=>{
+    const label=isSameDay(d,now)?'Today':(isSameDay(d,tomorrow)?'Tomorrow':DOWL[d.getDay()]);
+    const sec=document.createElement('div');sec.className='daysec';
+    sec.innerHTML=`<div class="daysec-h">${label}<span>${DOWL[d.getDay()].slice(0,3)}, ${MON[d.getMonth()]} ${d.getDate()}</span></div>`;
+    const grid=document.createElement('div');grid.className='slots';
+    slots.forEach(t=>{
+      const s=document.createElement('button');s.className='slot';s.textContent=t.label;
+      s.onclick=()=>{
+        wrap.querySelectorAll('.slot').forEach(c=>c.classList.remove('sel'));
+        s.classList.add('sel');
+        state.day=d;state.slot=t.label;$('#timeCta').disabled=false;
+      };
+      grid.appendChild(s);
+    });
+    sec.appendChild(grid);wrap.appendChild(sec);
+  });
+}
+
+/* ---------- prefill from the ad link ---------- */
+/* If the Facebook lead passes details on the link we pre-fill them (people can still
+   edit). Supported: ?fn=First&ph=7205551234&em=you@email.com  (+ common aliases),
+   and ?cid=<GHL contact id>. Browser autofill also fills these fields on tap. */
+function prefillFromURL(){
+  const q=new URLSearchParams(location.search);
+  const g=(...ks)=>{for(const k of ks){const v=q.get(k); if(v) return v.trim();} return '';};
+  const cid=g('cid','contact_id','contactId');
+  const fn =g('fn','first_name','firstName','name');
+  const ph =g('ph','phone','tel','phone_number');
+  const em =g('em','email','email_address');
+  if(cid) state.cid=cid;
+  if(fn){ state.fn=fn; const el=$('#fn'); if(el) el.value=fn; }
+  if(ph){ state.ph=ph; const el=$('#ph'); if(el) el.value=ph; }
+  if(em){ state.em=em; const el=$('#em'); if(el) el.value=em; }
+  if(state.fn) $('#s4title').textContent=`Almost there, ${state.fn}!`;
+  validate();
+}
+
+/* ---------- form ---------- */
+function validate(){
+  state.fn=$('#fn').value.trim();
+  state.ph=$('#ph').value.trim();
+  state.em=$('#em').value.trim();
+  state.addr=$('#addr').value.trim();
+  const okName  = state.fn.length>0;
+  const okPhone = state.ph.replace(/\D/g,'').length>=10;
+  const okEmail = /^\S+@\S+\.\S+$/.test(state.em);
+  const okAddr  = state.addr.length>3;
+  $('#bookCta').disabled=!(okName && okPhone && okEmail && okAddr);
+}
+const DOWL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+/* API base — your voicelab app on Railway (where bookings are sent). */
+const API='https://www.voicelab.live';
+
+/* Build a naive wall-clock ISO ('YYYY-MM-DDTHH:MM:00') from the chosen day + slot.
+   Built from the displayed date parts (not toISOString), so the day never shifts
+   by timezone — the server stamps the Denver offset. */
+function localISO(d,slot){
+  const m=slot.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  let h=(+m[1])%12; if(/PM/i.test(m[3])) h+=12;
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(h)}:${p(+m[2])}:00`;
+}
+
+function renderConfirm(){
+  const d=state.day;
+  $('#doneName').textContent = state.fn ? `You're booked, ${state.fn}!` : "You're booked!";
+  $('#cM').textContent=MON[d.getMonth()];$('#cD').textContent=d.getDate();
+  $('#cWhen').textContent=`${DOWL[d.getDay()]} at ${state.slot}`;
+  $('#cWhere').textContent=`${state.addr} · about 15 minutes`;
+  show('done');
+}
+
+async function book(){
+  const btn=$('#bookCta'), err=$('#errbox');
+  err.classList.remove('on');
+  btn.disabled=true; btn.classList.add('loading');
+  const payload={
+    contact_id:state.cid,
+    first_name:state.fn, phone:state.ph, email:state.em, address:state.addr,
+    own:state.own, bill:state.bill,
+    start_local:localISO(state.day,state.slot),
+    day_label:DOWL[state.day.getDay()], slot_label:state.slot,
+    source:'energy-report-landing'
+  };
+  try{
+    const r=await fetch(API+'/api/book',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok || j.success===false) throw new Error(j.error||'book failed');
+    renderConfirm();               // request reached the app + captured the lead
+  }catch(e){
+    btn.classList.remove('loading'); btn.disabled=false;
+    err.classList.add('on');
+    window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+  }
+}
+drawBill();
+</script>
+</body>
+</html>

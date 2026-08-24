@@ -84,6 +84,20 @@ TEXT_DELAY_SECONDS = int(os.environ.get('TEXT_DELAY_SECONDS', '30'))  # Wait 30 
 # 🔧 TESTING: Bypass calling hours check (set to 'true' to test anytime)
 BYPASS_CALLING_HOURS = os.environ.get('BYPASS_CALLING_HOURS', 'true').lower() == 'true'
 
+# ── OUTREACH SAFETY GATE ─────────────────────────────────────────────────────
+# On 2026-08-23 a GHL "Contact Created" trigger with NO filter enrolled every
+# contact in the account (21,983 of them, including bulk imports) and the webhook
+# dialed + texted all of them. These two settings make that impossible again.
+#
+# CALLING_ENABLED=false is an instant global kill switch. Flip it in Railway to
+# stop ALL outreach in seconds without a code change.
+CALLING_ENABLED = os.environ.get('CALLING_ENABLED', 'true').lower() == 'true'
+# Only contacts carrying one of these tags may be called or texted. Real ad leads
+# get tagged 'english' / 'spanish' by the ad workflow; bulk imports do not. Set to
+# empty to disable the allowlist (NOT recommended). Comma-separated, lowercased.
+REQUIRED_LEAD_TAGS = {t.strip().lower() for t in
+    os.environ.get('REQUIRED_LEAD_TAGS', 'english,spanish').split(',') if t.strip()}
+
 # Retell API Key (for SMS and calls)
 RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railway → Variables
 
@@ -3492,9 +3506,62 @@ def ghl_fetch_contact_details(contact_id):
         'state': state,
         'postal_code': postal,
         'full_address': full,
+        'tags': [str(t).strip().lower() for t in (c.get('tags') or []) if t],
     }
     print(f"📇 GHL contact {contact_id}: address='{street}' city='{city}' state='{state}' phone='{details['phone']}'")
     return details
+
+
+def lead_approved_for_outreach(payload, contact_id, tags_hint=None):
+    """Gatekeeper: may we call/text this contact at all?
+
+    Returns (True, reason) to proceed, (False, reason) to refuse. Refusing is
+    logged loudly and the webhook still 200s so GHL does not retry.
+
+    Two independent gates, both must pass:
+      1. CALLING_ENABLED global kill switch.
+      2. The contact carries one of REQUIRED_LEAD_TAGS. Real ad leads are tagged
+         english/spanish by the ad workflow; a bulk-imported contact is not, so
+         this alone stops the 21,983-contact incident from ever repeating.
+
+    A workflow may also assert approval explicitly by sending
+    customData.lead_source='ad' or a truthy customData.approved, for cases where
+    the tag has not propagated yet. That is a deliberate opt-in, never the default.
+    """
+    if not CALLING_ENABLED:
+        return (False, 'CALLING_ENABLED=false (global kill switch)')
+
+    if not REQUIRED_LEAD_TAGS:
+        return (True, 'allowlist disabled')
+
+    cd = payload.get('customData', {}) if isinstance(payload.get('customData', {}), dict) else {}
+    if str(cd.get('approved', '')).lower() in ('1', 'true', 'yes') or \
+       str(cd.get('lead_source', '')).lower() in ('ad', 'facebook', 'paid'):
+        return (True, 'explicit workflow approval')
+
+    # Gather tags from every place they might arrive, then fall back to the record.
+    tags = set(tags_hint or [])
+    for src in (payload.get('tags'), cd.get('tags'),
+                (payload.get('contact') or {}).get('tags')):
+        if isinstance(src, str):
+            tags.update(t.strip().lower() for t in src.split(',') if t.strip())
+        elif isinstance(src, (list, tuple)):
+            tags.update(str(t).strip().lower() for t in src if t)
+
+    if not (tags & REQUIRED_LEAD_TAGS) and contact_id:
+        # Nothing in the payload matched; check the actual contact record.
+        try:
+            det = ghl_fetch_contact_details(contact_id)
+            tags.update(det.get('tags') or [])
+        except Exception as e:
+            print(f"\u26a0\ufe0f  tag lookup failed for {contact_id}: {e}")
+
+    match = tags & REQUIRED_LEAD_TAGS
+    if match:
+        return (True, f'has required tag {sorted(match)}')
+    return (False, f'no required tag (needs one of {sorted(REQUIRED_LEAD_TAGS)}; '
+                   f'contact has {sorted(tags) or "none"})')
+
 
 
 def ghl_create_contact(first_name, phone, email=None, last_name=None, tags=None, custom_fields=None, source='VoiceLab'):
@@ -18261,6 +18328,17 @@ Let's close some deals! 🚀"""
                     return
                 
                 phone = format_phone(phone)
+
+                # ── OUTREACH SAFETY GATE ─────────────────────────────────────
+                # Refuse to call/text unless this is a verified ad lead. Without
+                # this, any misconfigured GHL trigger (e.g. unfiltered "Contact
+                # Created") dials the entire database. See lead_approved_for_outreach.
+                _ok, _why = lead_approved_for_outreach(d, contact_id)
+                if not _ok:
+                    print(f"\U0001f6d1 OUTREACH BLOCKED for {phone} (contact {contact_id}): {_why}")
+                    self.send_json({"success": True, "status": "skipped", "reason": _why})
+                    return
+                print(f"\u2705 Outreach approved for {phone}: {_why}")
                 
                 # Log the webhook (with timeout to prevent locking)
                 try:

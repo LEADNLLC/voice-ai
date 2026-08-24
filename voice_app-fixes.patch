@@ -1,7 +1,7 @@
 From ab87b146c9596cc44a23b58b0b6a9c5e4597c924 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sat, 22 Aug 2026 23:18:58 +0000
-Subject: [PATCH 1/4] Pass real date/time context to the Retell agent
+Subject: [PATCH 1/5] Pass real date/time context to the Retell agent
 
 The agent had no idea what day it was, so it offered 'today or tomorrow',
 got told tomorrow was Sunday, and asked about tomorrow twice more. It also
@@ -117,7 +117,7 @@ index 77fe878..b4a948a 100644
 From 98c427792ae2deed1be8b1c3c992b2b92c3bb0d9 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 23 Aug 2026 00:32:33 +0000
-Subject: [PATCH 2/4] Never let Retell speak an unrendered variable
+Subject: [PATCH 2/5] Never let Retell speak an unrendered variable
 
 A live call opened with the agent saying the literal '{{first_name}}' and
 '{{address}}' out loud; the lead hung up. Cause: /api/custom-agent built a
@@ -212,7 +212,7 @@ index b4a948a..d5f316a 100644
 From c5065dae30ea3001562651187356cc44ce7a5049 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 23 Aug 2026 04:00:37 +0000
-Subject: [PATCH 3/4] 3-a-day call cadence and automatic GHL stage advancement
+Subject: [PATCH 3/5] 3-a-day call cadence and automatic GHL stage advancement
 
 Cadence: 6 calls/day on 2-hour intervals -> 3/day, one per window
 (9-11am, 1-4pm, 5-7pm) in the lead's local time. Double-tap off; the
@@ -503,7 +503,7 @@ index d5f316a..a3acc95 100644
 From 61b96469229fafa27edfbd51e4152a2da19f1daf Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 23 Aug 2026 04:29:56 +0000
-Subject: [PATCH 4/4] Never write a placeholder name onto a pipeline card
+Subject: [PATCH 4/5] Never write a placeholder name onto a pipeline card
 
 The Solar Leads Client board had 13 opportunities titled literally
 'there' in one 100-card sample. Cause: make_call() defaults name='there'
@@ -594,6 +594,144 @@ index a3acc95..afd567b 100644
                                      )
                                      if opp_result.get('opportunity') or opp_result.get('id'):
                                          print(f"✅ Created opportunity in {pipeline_stage}")
+-- 
+2.43.0
+
+
+From f634989e3ba6fede7ff4874c2432e65092e62745 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 24 Aug 2026 16:00:14 +0000
+Subject: [PATCH 5/5] Outreach safety gate: never dial the whole database again
+
+A GHL 'Contact Created' trigger with no filter enrolled all 21,983
+contacts (bulk imports included) and the webhook called + texted every
+one. The webhook had no guard - it acted on anything that reached it.
+
+- lead_approved_for_outreach() gates /webhook/ghl before ANY action
+  (sequence, direct call, text). Two gates, both must pass:
+    1. CALLING_ENABLED - instant global kill switch via env
+    2. contact carries a REQUIRED_LEAD_TAGS tag (english/spanish) - real
+       ad leads are tagged, bulk imports are not
+  A workflow can opt in explicitly via customData.lead_source=ad.
+- ghl_fetch_contact_details now returns tags for the gate to check.
+- Blocked outreach logs loudly and 200s so GHL does not retry.
+
+The GHL-side fix is to delete the unfiltered Contact Created trigger and
+keep the Contact Tag -> english/spanish trigger. This code is the backstop.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ voice_app.py | 78 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 78 insertions(+)
+
+diff --git a/voice_app.py b/voice_app.py
+index afd567b..9ef90d3 100644
+--- a/voice_app.py
++++ b/voice_app.py
+@@ -84,6 +84,20 @@ TEXT_DELAY_SECONDS = int(os.environ.get('TEXT_DELAY_SECONDS', '30'))  # Wait 30
+ # 🔧 TESTING: Bypass calling hours check (set to 'true' to test anytime)
+ BYPASS_CALLING_HOURS = os.environ.get('BYPASS_CALLING_HOURS', 'true').lower() == 'true'
+ 
++# ── OUTREACH SAFETY GATE ─────────────────────────────────────────────────────
++# On 2026-08-23 a GHL "Contact Created" trigger with NO filter enrolled every
++# contact in the account (21,983 of them, including bulk imports) and the webhook
++# dialed + texted all of them. These two settings make that impossible again.
++#
++# CALLING_ENABLED=false is an instant global kill switch. Flip it in Railway to
++# stop ALL outreach in seconds without a code change.
++CALLING_ENABLED = os.environ.get('CALLING_ENABLED', 'true').lower() == 'true'
++# Only contacts carrying one of these tags may be called or texted. Real ad leads
++# get tagged 'english' / 'spanish' by the ad workflow; bulk imports do not. Set to
++# empty to disable the allowlist (NOT recommended). Comma-separated, lowercased.
++REQUIRED_LEAD_TAGS = {t.strip().lower() for t in
++    os.environ.get('REQUIRED_LEAD_TAGS', 'english,spanish').split(',') if t.strip()}
++
+ # Retell API Key (for SMS and calls)
+ RETELL_API_KEY = os.environ.get('RETELL_API_KEY', '')  # REQUIRED - set in Railway → Variables
+ 
+@@ -3492,11 +3506,64 @@ def ghl_fetch_contact_details(contact_id):
+         'state': state,
+         'postal_code': postal,
+         'full_address': full,
++        'tags': [str(t).strip().lower() for t in (c.get('tags') or []) if t],
+     }
+     print(f"📇 GHL contact {contact_id}: address='{street}' city='{city}' state='{state}' phone='{details['phone']}'")
+     return details
+ 
+ 
++def lead_approved_for_outreach(payload, contact_id, tags_hint=None):
++    """Gatekeeper: may we call/text this contact at all?
++
++    Returns (True, reason) to proceed, (False, reason) to refuse. Refusing is
++    logged loudly and the webhook still 200s so GHL does not retry.
++
++    Two independent gates, both must pass:
++      1. CALLING_ENABLED global kill switch.
++      2. The contact carries one of REQUIRED_LEAD_TAGS. Real ad leads are tagged
++         english/spanish by the ad workflow; a bulk-imported contact is not, so
++         this alone stops the 21,983-contact incident from ever repeating.
++
++    A workflow may also assert approval explicitly by sending
++    customData.lead_source='ad' or a truthy customData.approved, for cases where
++    the tag has not propagated yet. That is a deliberate opt-in, never the default.
++    """
++    if not CALLING_ENABLED:
++        return (False, 'CALLING_ENABLED=false (global kill switch)')
++
++    if not REQUIRED_LEAD_TAGS:
++        return (True, 'allowlist disabled')
++
++    cd = payload.get('customData', {}) if isinstance(payload.get('customData', {}), dict) else {}
++    if str(cd.get('approved', '')).lower() in ('1', 'true', 'yes') or \
++       str(cd.get('lead_source', '')).lower() in ('ad', 'facebook', 'paid'):
++        return (True, 'explicit workflow approval')
++
++    # Gather tags from every place they might arrive, then fall back to the record.
++    tags = set(tags_hint or [])
++    for src in (payload.get('tags'), cd.get('tags'),
++                (payload.get('contact') or {}).get('tags')):
++        if isinstance(src, str):
++            tags.update(t.strip().lower() for t in src.split(',') if t.strip())
++        elif isinstance(src, (list, tuple)):
++            tags.update(str(t).strip().lower() for t in src if t)
++
++    if not (tags & REQUIRED_LEAD_TAGS) and contact_id:
++        # Nothing in the payload matched; check the actual contact record.
++        try:
++            det = ghl_fetch_contact_details(contact_id)
++            tags.update(det.get('tags') or [])
++        except Exception as e:
++            print(f"\u26a0\ufe0f  tag lookup failed for {contact_id}: {e}")
++
++    match = tags & REQUIRED_LEAD_TAGS
++    if match:
++        return (True, f'has required tag {sorted(match)}')
++    return (False, f'no required tag (needs one of {sorted(REQUIRED_LEAD_TAGS)}; '
++                   f'contact has {sorted(tags) or "none"})')
++
++
++
+ def ghl_create_contact(first_name, phone, email=None, last_name=None, tags=None, custom_fields=None, source='VoiceLab'):
+     """Create a contact in GoHighLevel"""
+     data = {
+@@ -18261,6 +18328,17 @@ Let's close some deals! 🚀"""
+                     return
+                 
+                 phone = format_phone(phone)
++
++                # ── OUTREACH SAFETY GATE ─────────────────────────────────────
++                # Refuse to call/text unless this is a verified ad lead. Without
++                # this, any misconfigured GHL trigger (e.g. unfiltered "Contact
++                # Created") dials the entire database. See lead_approved_for_outreach.
++                _ok, _why = lead_approved_for_outreach(d, contact_id)
++                if not _ok:
++                    print(f"\U0001f6d1 OUTREACH BLOCKED for {phone} (contact {contact_id}): {_why}")
++                    self.send_json({"success": True, "status": "skipped", "reason": _why})
++                    return
++                print(f"\u2705 Outreach approved for {phone}: {_why}")
+                 
+                 # Log the webhook (with timeout to prevent locking)
+                 try:
 -- 
 2.43.0
 

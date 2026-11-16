@@ -451,6 +451,39 @@ GHL_CALENDAR_ID = os.environ.get('GHL_CALENDAR_ID', 'wUUB0CNuZKlAy0NyYbmn')  # f
 # so you never have to hunt for the ID. Matching is case-insensitive and ignores spaces.
 # If the name can't be resolved, GHL_CALENDAR_ID above is used as the fallback.
 GHL_CALENDAR_NAME = os.environ.get('GHL_CALENDAR_NAME', 'ILLINOIS - VIRTUAL')
+# Roofing (Bulldog Roofing / Hailey) inspections book onto their own calendar so they
+# never land on the solar calendar. Same name matching as GHL_CALENDAR_NAME.
+ROOFING_CALENDAR_NAME = os.environ.get('ROOFING_CALENDAR_NAME', 'MANNY - CALENDAR')
+ROOFING_AGENT_ID = 'agent_50ac8943b545a778304e160e93'  # ROOFING AGENT - HAILEY
+
+
+def _norm_appt_date(val):
+    """Turn whatever the post-call extraction gave us into YYYY-MM-DD, or None."""
+    s = str(val or '').strip()
+    if not s or s.lower() in ('none', 'null', 'n/a', 'unknown'):
+        return None
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m/%d/%y', '%B %d, %Y', '%b %d, %Y', '%A, %B %d, %Y'):
+        try:
+            return datetime.strptime(s, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+    return None
+
+
+def _norm_appt_time(val):
+    """Turn '1 PM', '1:30 pm', '13:00', '10:00 AM' into HH:MM (24h), or None."""
+    s = str(val or '').strip().lower().replace('.', '')
+    m = re.match(r'^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$', s)
+    if not m:
+        return None
+    hour, minute, ampm = int(m.group(1)), int(m.group(2) or 0), m.group(3)
+    if ampm == 'pm' and hour != 12:
+        hour += 12
+    elif ampm == 'am' and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59:
+        return None
+    return f"{hour:02d}:{minute:02d}"
 # IANA timezone the times Hailey SPEAKS are in. Leads are Denver, so appointment times
 # are the homeowner's local Mountain time. GHL converts for display on the Illinois
 # calendar - it stores an absolute instant, so the offset written here is what matters.
@@ -4114,8 +4147,10 @@ def ghl_sync_appointment_to_ghl(appointment):
                     return {"success": False, "error": "Failed to create contact"}
                 contact_id = result['contact']['id']
         
-        # Resolve the target calendar by name (GHL_CALENDAR_NAME), e.g. "Illinois Virtual"
-        calendar_id = ghl_resolve_calendar_id()
+        # Resolve the target calendar by name. Roofing has its own calendar.
+        is_roofing = appointment.get('agent_type') == 'roofing'
+        calendar_id = ghl_resolve_calendar_id(ROOFING_CALENDAR_NAME if is_roofing else None)
+        appt_label = "Roof Inspection" if is_roofing else "Solar Assessment"
         
         # Create appointment
         appt_date = appointment.get('appointment_date', '')
@@ -4134,14 +4169,19 @@ def ghl_sync_appointment_to_ghl(appointment):
                 calendar_id=calendar_id,
                 start_time=start_time,
                 end_time=end_time,
-                title=f"Solar Assessment - {appointment.get('first_name', 'Customer')}",
+                title=f"{appt_label} - {appointment.get('first_name', 'Customer')}",
                 address=appointment.get('address') or None,
                 notes=(
                     f"\U0001f916 Booked via Hailey AI\n"
                     f"Phone: {phone}\n"
                     f"Address: {appointment.get('address', 'N/A')}\n"
-                    f"Utility bill: {appointment.get('monthly_bill_range') or 'not captured'}\n"
-                    f"Homeowner: {appointment.get('homeowner_status') or 'not captured'}\n"
+                    + (
+                        f"Damage: {appointment.get('damage_description') or 'not captured'}\n"
+                        f"Water inside: {appointment.get('leak_or_interior_damage') or 'not captured'}\n"
+                        if is_roofing else
+                        f"Utility bill: {appointment.get('monthly_bill_range') or 'not captured'}\n"
+                    )
+                    + f"Homeowner: {appointment.get('homeowner_status') or 'not captured'}\n"
                     f"Agent: {appointment.get('agent_type', 'N/A')}"
                 )
             )
@@ -11184,7 +11224,7 @@ renderApptList(allAppointments);
 function renderApptList(appts){
 if(!$('appt-list'))return;
 if(!appts||appts.length===0){
-$('appt-list').innerHTML='<div class="appts-empty"><div class="appts-empty-icon">📅</div><div class="appts-empty-title">No appointments yet</div><div class="appts-empty-text">Add your first appointment to get started</div><button class="btn btn-primary" onclick="openModal(\'appt-modal\')">+ New Appointment</button></div>';
+$('appt-list').innerHTML='<div class="appts-empty"><div class="appts-empty-icon">📅</div><div class="appts-empty-title">No appointments yet</div><div class="appts-empty-text">Add your first appointment to get started</div><button class="btn btn-primary" onclick="openModal(\\'appt-modal\\')">+ New Appointment</button></div>';
 return;
 }
 $('appt-list').innerHTML=appts.map(x=>apptCard(x)).join('');
@@ -11770,7 +11810,7 @@ let html='';stages.forEach(s=>{const st=stats[s.stage_key]||{total:0};html+=`<di
 if($('pipeline-board'))$('pipeline-board').innerHTML=html;
 }catch(e){console.error('loadPipeline error:',e)}}
 async function sendAria(){const msg=$('aria-input').value.trim();if(!msg)return;$('aria-input').value='';toast('Processing...');const r=await fetch('/api/aria',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})}).then(r=>r.json());if(r.response){showAriaResponse(r.response)}loadDash()}
-function showAriaResponse(msg){const panel=$('aria-response');if(!panel){const d=document.createElement('div');d.id='aria-response';d.style.cssText='position:fixed;bottom:70px;right:32px;max-width:400px;background:var(--gray-900);border:1px solid var(--cyan);border-radius:12px;padding:16px;z-index:600;box-shadow:0 4px 20px rgba(0,209,255,0.2)';d.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;background:var(--cyan);border-radius:50%"></div><span style="font-weight:600;font-size:13px">Aria</span></div><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:var(--gray-500);cursor:pointer;font-size:16px">×</button></div><div style="font-size:14px;line-height:1.6;color:var(--white)">'+msg.replace(/\n/g,'<br>')+'</div>';document.body.appendChild(d);setTimeout(()=>{if($('aria-response'))$('aria-response').remove()},15000)}else{panel.querySelector('div:last-child').innerHTML=msg.replace(/\n/g,'<br>')}}
+function showAriaResponse(msg){const panel=$('aria-response');if(!panel){const d=document.createElement('div');d.id='aria-response';d.style.cssText='position:fixed;bottom:70px;right:32px;max-width:400px;background:var(--gray-900);border:1px solid var(--cyan);border-radius:12px;padding:16px;z-index:600;box-shadow:0 4px 20px rgba(0,209,255,0.2)';d.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;background:var(--cyan);border-radius:50%"></div><span style="font-weight:600;font-size:13px">Aria</span></div><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:var(--gray-500);cursor:pointer;font-size:16px">×</button></div><div style="font-size:14px;line-height:1.6;color:var(--white)">'+msg.replace(/\\n/g,'<br>')+'</div>';document.body.appendChild(d);setTimeout(()=>{if($('aria-response'))$('aria-response').remove()},15000)}else{panel.querySelector('div:last-child').innerHTML=msg.replace(/\\n/g,'<br>')}}
 // Integrations
 async function loadIntegrations(){
 // Update last check time
@@ -12111,20 +12151,20 @@ function renderAgentCards(agents) {
                 '<div class="evo-gene-row">' +
                     '<span class="evo-gene-label">Responsiveness</span>' +
                     '<input type="range" class="evo-slider" min="0.1" max="1" step="0.1" value="' + (genome.responsiveness || 0.5) + '" ' +
-                        'oninput="updateGene(\'' + key + '\', \'responsiveness\', this.value)">' +
+                        'oninput="updateGene(\\'' + key + '\\', \\'responsiveness\\', this.value)">' +
                     '<span class="evo-gene-value" id="' + key + '-responsiveness">' + (genome.responsiveness || 0.5) + '</span>' +
                 '</div>' +
                 '<div class="evo-gene-row">' +
                     '<span class="evo-gene-label">Temperature</span>' +
                     '<input type="range" class="evo-slider" min="0.3" max="1.2" step="0.1" value="' + (genome.temperature || 0.8) + '" ' +
-                        'oninput="updateGene(\'' + key + '\', \'temperature\', this.value)">' +
+                        'oninput="updateGene(\\'' + key + '\\', \\'temperature\\', this.value)">' +
                     '<span class="evo-gene-value" id="' + key + '-temperature">' + (genome.temperature || 0.8) + '</span>' +
                 '</div>' +
             '</div>' +
             
             '<div class="evo-agent-actions">' +
-                '<button class="btn btn-secondary btn-sm" onclick="resetGenome(\'' + key + '\')">↺ Reset</button>' +
-                '<button class="btn btn-primary" onclick="applyAgentChanges(\'' + key + '\')" style="flex:1">⚡ Apply Changes</button>' +
+                '<button class="btn btn-secondary btn-sm" onclick="resetGenome(\\'' + key + '\\')">↺ Reset</button>' +
+                '<button class="btn btn-primary" onclick="applyAgentChanges(\\'' + key + '\\')" style="flex:1">⚡ Apply Changes</button>' +
             '</div>' +
         '</div>';
     }
@@ -12865,8 +12905,8 @@ function renderNexusGenomes() {
                 '<div class="va-control"><span class="va-control-label">Temperature</span><input type="range" class="va-control-slider" min="0.3" max="1.2" step="0.05" value="0.8" oninput="this.nextElementSibling.textContent=this.value"><span class="va-control-value">0.8</span></div>' +
             '</div>' +
             '<div class="va-agent-actions">' +
-                '<button class="va-agent-btn secondary" onclick="syncVoicesNx(\'' + key + '\')">Sync Voice</button>' +
-                '<button class="va-agent-btn primary" onclick="applyNexusAgent(\'' + key + '\')">Apply Changes</button>' +
+                '<button class="va-agent-btn secondary" onclick="syncVoicesNx(\\'' + key + '\\')">Sync Voice</button>' +
+                '<button class="va-agent-btn primary" onclick="applyNexusAgent(\\'' + key + '\\')">Apply Changes</button>' +
             '</div>' +
         '</div>';
     }
@@ -13067,7 +13107,7 @@ $('api-keys-list').innerHTML=keys.length?keys.map(k=>`<div style="display:flex;j
 async function generateApiKey(){
 const name=prompt('API Key Name:');if(!name)return;
 const r=await fetch('/api/api-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key_name:name})}).then(r=>r.json());
-if(r.api_key){alert('Your new API key (copy now, shown once):\n\n'+r.api_key);loadApiKeys()}
+if(r.api_key){alert('Your new API key (copy now, shown once):\\n\\n'+r.api_key);loadApiKeys()}
 }
 async function deleteApiKey(id){if(!confirm('Revoke this API key?'))return;await fetch('/api/api-keys/'+id,{method:'DELETE'});loadApiKeys()}
 // Auth
@@ -19484,7 +19524,40 @@ Let's close some deals! 🚀"""
                 
                 event = d.get('event', '')
                 call_data = d.get('call', d)
-                
+
+                # Nothing to sync when a call starts. Processing call_started used to
+                # tag every lead "AI - Short Call" the moment the phone rang.
+                if event == 'call_started':
+                    self.send_json({"success": True, "ignored": event})
+                    return
+
+                # Roofing waits for call_analyzed: that event carries the post-call
+                # extraction (appointment date/time, damage, leak), so the calendar gets
+                # the real slot instead of a guess parsed out of the transcript.
+                _is_roofing_call = (
+                    call_data.get('agent_id') == ROOFING_AGENT_ID
+                    or (call_data.get('retell_llm_dynamic_variables') or {}).get('agent_type') == 'roofing'
+                )
+                # Only defer calls that actually connected; no-answers sync right away
+                # so the call sequence keeps moving even if analysis never arrives.
+                if _is_roofing_call and event == 'call_ended' and (call_data.get('transcript') or '').strip():
+                    self.send_json({"success": True, "deferred": "waiting for call_analyzed"})
+                    return
+
+                # Retell sends call_ended AND call_analyzed and retries both. Sync each
+                # call once, or one booking becomes several GHL appointments.
+                _cid = call_data.get('call_id', '')
+                if _cid:
+                    if _cid in _SYNCED_CALL_IDS:
+                        self.send_json({"success": True, "duplicate": _cid})
+                        return
+                    _SYNCED_CALL_IDS.add(_cid)
+                    if len(_SYNCED_CALL_IDS) > 5000:
+                        for _old in list(_SYNCED_CALL_IDS)[:1000]:
+                            _SYNCED_CALL_IDS.discard(_old)
+
+                extracted = (call_data.get('call_analysis') or {}).get('custom_analysis_data') or {}
+
                 # Extract call details
                 call_id = call_data.get('call_id', '')
                 call_status = call_data.get('call_status', call_data.get('status', ''))
@@ -19589,9 +19662,13 @@ Let's close some deals! 🚀"""
                         "we're set for", "appointment is confirmed", "scheduled for", "booked for",
                         "see you on", "appointment set", "you're all set for", "i've got you down for",
                         "looking forward to helping you out", "locking that in", "talk soon",
-                        "you'll get a text with the details", "i'm locking that in"
+                        "you'll get a text with the details", "i'm locking that in",
+                        "you're set for", "he'll see you"
                     ]
                     booked = any(phrase in transcript_lower for phrase in booking_phrases)
+                    # The post-call extraction is the better signal when Retell sent it.
+                    if str(extracted.get('appointment_booked', '')).lower() in ('true', 'yes', '1'):
+                        booked = True
                     
                     # Check for other outcomes
                     already_solar = any(phrase in transcript_lower for phrase in [
@@ -19615,13 +19692,13 @@ Let's close some deals! 🚀"""
                     disqualified = any(phrase in transcript_lower for phrase in [
                         "renter", "i rent", "we rent", "renting", "don't own", "dont own",
                         "do not own", "apartment", "condo", "mobile home",
-                        "not the homeowner", "not the owner", "landlord", "lease",
+                        "not the homeowner", "not the owner", "landlord",
                         # common ASR mishearings of "I'm a renter"
                         "i'm a runner", "im a runner", "i am a runner", "a renner",
                         # what they say when Hailey asks if the owner is around
                         "lives someplace else", "lives somewhere else", "doesn't live here",
                         "does not live here", "owner isn't here", "owner is not here",
-                    ])
+                    ]) or bool(re.search(r'\b(lease|leasing)\b', transcript_lower))  # "please" contains "lease"
                     
                     # Determine final outcome, tag, and pipeline stage
                     if call_status in ['no-answer', 'no_answer']:
@@ -19720,7 +19797,7 @@ Let's close some deals! 🚀"""
                                         contact_id=ghl_contact_id,
                                         pipeline_id=GHL_PIPELINE_ID,
                                         stage_id=target_stage_id,
-                                        name=opportunity_display_name(customer_name, None, phone, suffix='Solar')
+                                        name=opportunity_display_name(customer_name, None, phone, suffix='Roofing' if agent_type == 'roofing' else 'Solar')
                                     )
                                     if opp_result.get('opportunity') or opp_result.get('id'):
                                         print(f"✅ Created opportunity in {pipeline_stage}")
@@ -19763,8 +19840,9 @@ Let's close some deals! 🚀"""
                         print(f"🎉 Appointment detected! Creating in GHL calendar...")
                         
                         # Try to extract date/time from transcript
-                        import re
-                        
+                        # (re is imported at module level; a local "import re" here
+                        # would make re local to the whole handler.)
+
                         # Look for "tomorrow"
                         if 'tomorrow' in transcript_lower:
                             appointment_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
@@ -19797,6 +19875,10 @@ Let's close some deals! 🚀"""
                                 if args.get('time') or args.get('appointment_time'):
                                     appointment_time = args.get('time') or args.get('appointment_time')
                         
+                        # Post-call extraction wins over transcript guessing when present.
+                        appointment_date = _norm_appt_date(extracted.get('appointment_date')) or appointment_date
+                        appointment_time = _norm_appt_time(extracted.get('appointment_time')) or appointment_time
+
                         # Use defaults if couldn't extract
                         if not appointment_date:
                             appointment_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
@@ -19811,7 +19893,11 @@ Let's close some deals! 🚀"""
                             'appointment_date': appointment_date,
                             'appointment_time': appointment_time,
                             'agent_type': agent_type,
-                            'duration_minutes': 60
+                            'duration_minutes': 60,
+                            'address': extracted.get('customer_address') or custom_vars.get('address', ''),
+                            'homeowner_status': extracted.get('homeowner_status', ''),
+                            'damage_description': extracted.get('damage_description', ''),
+                            'leak_or_interior_damage': extracted.get('leak_or_interior_damage', '')
                         })
                         
                         if appt_result.get('success'):

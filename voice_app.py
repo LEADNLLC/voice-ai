@@ -11184,7 +11184,7 @@ renderApptList(allAppointments);
 function renderApptList(appts){
 if(!$('appt-list'))return;
 if(!appts||appts.length===0){
-$('appt-list').innerHTML='<div class="appts-empty"><div class="appts-empty-icon">📅</div><div class="appts-empty-title">No appointments yet</div><div class="appts-empty-text">Add your first appointment to get started</div><button class="btn btn-primary" onclick="openModal(\'appt-modal\')">+ New Appointment</button></div>';
+$('appt-list').innerHTML='<div class="appts-empty"><div class="appts-empty-icon">📅</div><div class="appts-empty-title">No appointments yet</div><div class="appts-empty-text">Add your first appointment to get started</div><button class="btn btn-primary" onclick="openModal(\\'appt-modal\\')">+ New Appointment</button></div>';
 return;
 }
 $('appt-list').innerHTML=appts.map(x=>apptCard(x)).join('');
@@ -11770,7 +11770,7 @@ let html='';stages.forEach(s=>{const st=stats[s.stage_key]||{total:0};html+=`<di
 if($('pipeline-board'))$('pipeline-board').innerHTML=html;
 }catch(e){console.error('loadPipeline error:',e)}}
 async function sendAria(){const msg=$('aria-input').value.trim();if(!msg)return;$('aria-input').value='';toast('Processing...');const r=await fetch('/api/aria',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})}).then(r=>r.json());if(r.response){showAriaResponse(r.response)}loadDash()}
-function showAriaResponse(msg){const panel=$('aria-response');if(!panel){const d=document.createElement('div');d.id='aria-response';d.style.cssText='position:fixed;bottom:70px;right:32px;max-width:400px;background:var(--gray-900);border:1px solid var(--cyan);border-radius:12px;padding:16px;z-index:600;box-shadow:0 4px 20px rgba(0,209,255,0.2)';d.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;background:var(--cyan);border-radius:50%"></div><span style="font-weight:600;font-size:13px">Aria</span></div><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:var(--gray-500);cursor:pointer;font-size:16px">×</button></div><div style="font-size:14px;line-height:1.6;color:var(--white)">'+msg.replace(/\n/g,'<br>')+'</div>';document.body.appendChild(d);setTimeout(()=>{if($('aria-response'))$('aria-response').remove()},15000)}else{panel.querySelector('div:last-child').innerHTML=msg.replace(/\n/g,'<br>')}}
+function showAriaResponse(msg){const panel=$('aria-response');if(!panel){const d=document.createElement('div');d.id='aria-response';d.style.cssText='position:fixed;bottom:70px;right:32px;max-width:400px;background:var(--gray-900);border:1px solid var(--cyan);border-radius:12px;padding:16px;z-index:600;box-shadow:0 4px 20px rgba(0,209,255,0.2)';d.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;background:var(--cyan);border-radius:50%"></div><span style="font-weight:600;font-size:13px">Aria</span></div><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:var(--gray-500);cursor:pointer;font-size:16px">×</button></div><div style="font-size:14px;line-height:1.6;color:var(--white)">'+msg.replace(/\\n/g,'<br>')+'</div>';document.body.appendChild(d);setTimeout(()=>{if($('aria-response'))$('aria-response').remove()},15000)}else{panel.querySelector('div:last-child').innerHTML=msg.replace(/\\n/g,'<br>')}}
 // Integrations
 async function loadIntegrations(){
 // Update last check time
@@ -12111,20 +12111,20 @@ function renderAgentCards(agents) {
                 '<div class="evo-gene-row">' +
                     '<span class="evo-gene-label">Responsiveness</span>' +
                     '<input type="range" class="evo-slider" min="0.1" max="1" step="0.1" value="' + (genome.responsiveness || 0.5) + '" ' +
-                        'oninput="updateGene(\'' + key + '\', \'responsiveness\', this.value)">' +
+                        'oninput="updateGene(\\'' + key + '\\', \\'responsiveness\\', this.value)">' +
                     '<span class="evo-gene-value" id="' + key + '-responsiveness">' + (genome.responsiveness || 0.5) + '</span>' +
                 '</div>' +
                 '<div class="evo-gene-row">' +
                     '<span class="evo-gene-label">Temperature</span>' +
                     '<input type="range" class="evo-slider" min="0.3" max="1.2" step="0.1" value="' + (genome.temperature || 0.8) + '" ' +
-                        'oninput="updateGene(\'' + key + '\', \'temperature\', this.value)">' +
+                        'oninput="updateGene(\\'' + key + '\\', \\'temperature\\', this.value)">' +
                     '<span class="evo-gene-value" id="' + key + '-temperature">' + (genome.temperature || 0.8) + '</span>' +
                 '</div>' +
             '</div>' +
             
             '<div class="evo-agent-actions">' +
-                '<button class="btn btn-secondary btn-sm" onclick="resetGenome(\'' + key + '\')">↺ Reset</button>' +
-                '<button class="btn btn-primary" onclick="applyAgentChanges(\'' + key + '\')" style="flex:1">⚡ Apply Changes</button>' +
+                '<button class="btn btn-secondary btn-sm" onclick="resetGenome(\\'' + key + '\\')">↺ Reset</button>' +
+                '<button class="btn btn-primary" onclick="applyAgentChanges(\\'' + key + '\\')" style="flex:1">⚡ Apply Changes</button>' +
             '</div>' +
         '</div>';
     }
@@ -12865,8 +12865,8 @@ function renderNexusGenomes() {
                 '<div class="va-control"><span class="va-control-label">Temperature</span><input type="range" class="va-control-slider" min="0.3" max="1.2" step="0.05" value="0.8" oninput="this.nextElementSibling.textContent=this.value"><span class="va-control-value">0.8</span></div>' +
             '</div>' +
             '<div class="va-agent-actions">' +
-                '<button class="va-agent-btn secondary" onclick="syncVoicesNx(\'' + key + '\')">Sync Voice</button>' +
-                '<button class="va-agent-btn primary" onclick="applyNexusAgent(\'' + key + '\')">Apply Changes</button>' +
+                '<button class="va-agent-btn secondary" onclick="syncVoicesNx(\\'' + key + '\\')">Sync Voice</button>' +
+                '<button class="va-agent-btn primary" onclick="applyNexusAgent(\\'' + key + '\\')">Apply Changes</button>' +
             '</div>' +
         '</div>';
     }
@@ -13067,7 +13067,7 @@ $('api-keys-list').innerHTML=keys.length?keys.map(k=>`<div style="display:flex;j
 async function generateApiKey(){
 const name=prompt('API Key Name:');if(!name)return;
 const r=await fetch('/api/api-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key_name:name})}).then(r=>r.json());
-if(r.api_key){alert('Your new API key (copy now, shown once):\n\n'+r.api_key);loadApiKeys()}
+if(r.api_key){alert('Your new API key (copy now, shown once):\\n\\n'+r.api_key);loadApiKeys()}
 }
 async function deleteApiKey(id){if(!confirm('Revoke this API key?'))return;await fetch('/api/api-keys/'+id,{method:'DELETE'});loadApiKeys()}
 // Auth

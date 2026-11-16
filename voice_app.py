@@ -4367,6 +4367,40 @@ ROOFING_SMS_FOLLOWUP_TEMPLATES = [
 ]
 
 
+# A lead booked within this many days is never re-dialled by a new webhook.
+BOOKED_COOLDOWN_DAYS = int(os.environ.get('BOOKED_COOLDOWN_DAYS', '30'))
+
+# Lines Hailey says only once a time is locked in (solar + roofing scripts).
+BOOKED_PHRASES = (
+    "we're set for", "appointment is confirmed", "booked for", "appointment set",
+    "you're all set for", "you're set for", "i've got you down for", "locking that in",
+    "you'll get a text with the details", "he'll see you",
+)
+
+
+def stop_sequences_for_booking(phone, contact_id=''):
+    """Booked = done calling. End active sequences for this lead and drop pending calls."""
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        c = conn.cursor()
+        ids = []
+        if phone:
+            c.execute("SELECT id FROM call_sequences WHERE phone = ? AND status = 'active'", (phone,))
+            ids += [r[0] for r in c.fetchall()]
+        if contact_id:
+            c.execute("SELECT id FROM call_sequences WHERE ghl_contact_id = ? AND status = 'active'", (contact_id,))
+            ids += [r[0] for r in c.fetchall()]
+        for sid in set(ids):
+            c.execute("UPDATE call_sequences SET status = 'appointment_set' WHERE id = ?", (sid,))
+            c.execute("DELETE FROM scheduled_calls WHERE sequence_id = ? AND status = 'pending'", (sid,))
+        conn.commit()
+        conn.close()
+        if ids:
+            print(f"🛑 Booked - stopped {len(set(ids))} sequence(s) for {phone or contact_id}, no more calls")
+    except Exception as e:
+        print(f"⚠️ Could not stop sequences after booking: {e}")
+
+
 def agent_type_for_phone(cursor, phone):
     """Agent type of the most recent call sequence for this phone ('solar' if unknown)."""
     try:
@@ -19133,6 +19167,34 @@ Let's close some deals! 🚀"""
                     # Auto-clear superseded/stale sequences, then see what really blocks.
                     # A new GHL contact on the same phone supersedes the old sequence -
                     # otherwise re-testing from one cell jams the number permanently.
+                    # Already booked recently? Never restart calling a booked lead.
+                    # GHL retries webhooks (e.g. after a DNS blip) and re-fires
+                    # workflows, which used to start a fresh sequence after booking.
+                    c.execute("""SELECT id FROM call_sequences
+                                 WHERE (phone = ? OR (ghl_contact_id = ? AND ghl_contact_id != ''))
+                                   AND status IN ('appointment_set', 'appointment_booked', 'booked')
+                                   AND created_at >= ?
+                                 LIMIT 1""",
+                              (phone, contact_id or '', (datetime.now() - timedelta(days=BOOKED_COOLDOWN_DAYS)).isoformat()))
+                    _booked = c.fetchone()
+                    # Test phones may re-run the flow, but not within 30 minutes of a
+                    # booking - that window is GHL retries / duplicate fires, not a re-test.
+                    if _booked and re.sub(r'\D', '', phone)[-10:] in TEST_PHONES:
+                        c.execute("SELECT created_at FROM call_sequences WHERE id = ?", (_booked[0],))
+                        _row = c.fetchone()
+                        try:
+                            _age = (datetime.now() - datetime.fromisoformat(str(_row[0]))).total_seconds()
+                        except Exception:
+                            _age = 0
+                        if _age > 1800:
+                            print(f"🧪 {phone} is a test phone - allowing a fresh sequence")
+                            _booked = None
+                    if _booked:
+                        conn.close()
+                        print(f"🛑 {phone} already booked (sequence {_booked[0]}) - not calling again")
+                        self.send_json({"success": True, "status": "skipped", "reason": "already booked"})
+                        return
+
                     blocking = resolve_blocking_sequence(c, phone, contact_id, label='[webhook] ')
                     conn.commit()
                     if blocking:
@@ -19597,6 +19659,16 @@ Let's close some deals! 🚀"""
                     call_data.get('agent_id') == ROOFING_AGENT_ID
                     or (call_data.get('retell_llm_dynamic_variables') or {}).get('agent_type') == 'roofing'
                 )
+                # A booked lead must never be dialled again. Stop every active
+                # sequence for this number the moment the call ends, before any
+                # deferral or GHL work, so the scheduler / double-tap can't fire.
+                _tx = (call_data.get('transcript') or '').lower()
+                _ext = (call_data.get('call_analysis') or {}).get('custom_analysis_data') or {}
+                if (any(p in _tx for p in BOOKED_PHRASES)
+                        or str(_ext.get('appointment_booked', '')).lower() in ('true', 'yes', '1')):
+                    stop_sequences_for_booking(call_data.get('to_number', ''),
+                                               (call_data.get('retell_llm_dynamic_variables') or {}).get('ghl_contact_id', ''))
+
                 # Only defer calls that actually connected; no-answers sync right away
                 # so the call sequence keeps moving even if analysis never arrives.
                 if _is_roofing_call and event == 'call_ended' and (call_data.get('transcript') or '').strip():

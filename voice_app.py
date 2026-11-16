@@ -4358,6 +4358,31 @@ SMS_FOLLOWUP_TEMPLATES = [
      "in your area today and tomorrow, whichever's easier. Just say the word."),
 ]
 
+# Roofing (Bulldog Roofing) versions of the same texts. Same {first_name}/{address}.
+ROOFING_SMS_FOLLOWUP_TEMPLATES = [
+    ("Hi {first_name}, our inspector is in your neighborhood this week doing free "
+     "roof inspections. Want me to save you a spot, today after 4 or tomorrow?"),
+    ("Morning {first_name}, still happy to get your free roof inspection on the books. "
+     "No cost, no pressure, and you keep the photos. Just reply with a day that works."),
+]
+
+
+def agent_type_for_phone(cursor, phone):
+    """Agent type of the most recent call sequence for this phone ('solar' if unknown)."""
+    try:
+        cursor.execute('SELECT agent_type FROM call_sequences WHERE phone = ? '
+                       'ORDER BY id DESC LIMIT 1', (phone,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            return str(row[0]).strip().lower()
+    except Exception as e:
+        print(f"⚠️ agent_type lookup failed for {phone}: {e}")
+    return 'solar'
+
+
+def followup_templates_for(agent_type):
+    return ROOFING_SMS_FOLLOWUP_TEMPLATES if agent_type == 'roofing' else SMS_FOLLOWUP_TEMPLATES
+
 # 🔥 SMS SEQUENCE CONFIG - Text every 10 minutes until they respond!
 SMS_SEQUENCE_CONFIG = {
     # ONE professional follow-up, hours after the intro - not every 10 minutes.
@@ -4998,13 +5023,14 @@ def process_scheduled_texts():
                     print(f"📱 Skipping text - appointment already set!")
                     continue
             
-            # Get the message template
-            template_index = min(message_number - 1, len(SMS_FOLLOWUP_TEMPLATES) - 1)
+            # Get the message template (roofing leads get roofing copy)
+            _templates = followup_templates_for(agent_type_for_phone(c, phone))
+            template_index = min(message_number - 1, len(_templates) - 1)
             # For messages beyond our templates, rotate through the last few
-            if message_number > len(SMS_FOLLOWUP_TEMPLATES):
-                template_index = len(SMS_FOLLOWUP_TEMPLATES) - 4 + ((message_number - len(SMS_FOLLOWUP_TEMPLATES)) % 4)
-            
-            message_template = SMS_FOLLOWUP_TEMPLATES[template_index]
+            if message_number > len(_templates):
+                template_index = len(_templates) - 4 + ((message_number - len(_templates)) % 4)
+
+            message_template = _templates[template_index]
             message = message_template.format(first_name=first_name, address=address)
             
             # Send the text via Retell
@@ -5140,7 +5166,7 @@ def process_scheduled_calls():
             # 🆕 INTELLIGENCE: Send warm-up SMS on first call of day
             if calls_today == 0 and call.get('ghl_contact_id'):
                 try:
-                    send_warmup_sms(call['phone'], call['first_name'] or 'there', call['ghl_contact_id'])
+                    send_warmup_sms(call['phone'], call['first_name'] or 'there', call['ghl_contact_id'], agent_type=call.get('agent_type', ''))
                     print(f"📱 Warm-up SMS sent to {call['phone']}")
                     time.sleep(2)  # Brief pause before calling
                 except Exception as sms_err:
@@ -5231,15 +5257,16 @@ def process_sms_followups():
             texts_sent = seq.get('texts_sent', 1)
             minutes_between = seq.get('minutes_between_texts', 10)
             
-            # Get the right follow-up template
-            template_index = min(texts_sent - 1, len(SMS_FOLLOWUP_TEMPLATES) - 1)
-            
+            # Get the right follow-up template (roofing leads get roofing copy)
+            _templates = followup_templates_for(agent_type_for_phone(c, phone))
+            template_index = min(texts_sent - 1, len(_templates) - 1)
+
             # For later follow-ups, rotate through the last few templates
-            if texts_sent > len(SMS_FOLLOWUP_TEMPLATES):
+            if texts_sent > len(_templates):
                 # Rotate through last 4 templates
-                template_index = len(SMS_FOLLOWUP_TEMPLATES) - 4 + ((texts_sent - len(SMS_FOLLOWUP_TEMPLATES)) % 4)
-            
-            template = SMS_FOLLOWUP_TEMPLATES[template_index]
+                template_index = len(_templates) - 4 + ((texts_sent - len(_templates)) % 4)
+
+            template = _templates[template_index]
             message = template.format(first_name=first_name, address=address)
 
             print(f"📱 SMS Follow-up #{texts_sent + 1} to {phone}: {message[:50]}...")
@@ -5777,15 +5804,24 @@ INTRO_SMS_TEMPLATE = (
 )
 
 
-def build_intro_sms(name="", address="", message=""):
+ROOFING_INTRO_SMS_TEMPLATE = (
+    "Hi {first}, it's Hailey with Bulldog Roofing here in Denver. "
+    "Got your request about your roof. We're doing free roof inspections in your "
+    "area this week, about 15 minutes, and our inspector goes over everything with "
+    "you after. Does tomorrow at 10am or 6pm work better?"
+)
+
+
+def build_intro_sms(name="", address="", message="", agent_type=""):
     """The exact intro text. Caller-supplied message wins; otherwise fixed copy."""
     if message:
         return message
     first = (name or '').split()[0] if name else 'there'
-    return INTRO_SMS_TEMPLATE.format(first=first)
+    template = ROOFING_INTRO_SMS_TEMPLATE if agent_type == 'roofing' else INTRO_SMS_TEMPLATE
+    return template.format(first=first)
 
 
-def send_lead_sms(phone, name="", address="", ghl_contact_id=None, message=""):
+def send_lead_sms(phone, name="", address="", ghl_contact_id=None, message="", agent_type=""):
     """Send the pre-call intro text as a FIXED string, never an LLM chat.
 
     Order of preference is chosen for deliverability AND control:
@@ -5799,7 +5835,7 @@ def send_lead_sms(phone, name="", address="", ghl_contact_id=None, message=""):
     up in a real lead's first text. The intro is our brand's first impression; it
     must be exact every time.
     """
-    body = build_intro_sms(name=name, address=address, message=message)
+    body = build_intro_sms(name=name, address=address, message=message, agent_type=agent_type)
 
     # 1. GHL first - registered number, exact copy, best deliverability.
     if ghl_contact_id:
@@ -6545,7 +6581,7 @@ def make_call(phone, name="there", agent_type="roofing", is_test=False, use_span
         
         # Send the intro text with name and address for personalization
         # The chat agent will use these variables: {{first_name}}, {{address}}
-        sms_result = send_lead_sms(phone, name=name, address=address, ghl_contact_id=ghl_contact_id)
+        sms_result = send_lead_sms(phone, name=name, address=address, ghl_contact_id=ghl_contact_id, agent_type=agent_type)
         
         if sms_result.get('success'):
             print(f"✅ Intro text sent! Continuing to call...")
@@ -15771,12 +15807,28 @@ def send_ghl_sms(contact_id, message):
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
-def send_warmup_sms(phone, first_name, contact_id=None):
+def _sms_agent_type(phone, agent_type=''):
+    if agent_type:
+        return str(agent_type).strip().lower()
+    try:
+        _conn = sqlite3.connect(DB_PATH, timeout=10)
+        try:
+            return agent_type_for_phone(_conn.cursor(), phone)
+        finally:
+            _conn.close()
+    except Exception:
+        return 'solar'
+
+
+def send_warmup_sms(phone, first_name, contact_id=None, agent_type=''):
     """Send warm-up SMS before calling - SAME NUMBER as calls for trust!
-    
+
     Priority: Twilio (direct) > Retell > GHL (fallback, different number)
     """
-    message = f"Hey {first_name}, this is Hailey. I'm going to give you a quick call here in a few - wanted to see if you had a chance to look into that energy program you inquired about?"
+    if _sms_agent_type(phone, agent_type) == 'roofing':
+        message = f"Hey {first_name}, it's Hailey with Bulldog Roofing. I'm going to give you a quick call in a few about the free roof inspection you asked about."
+    else:
+        message = f"Hey {first_name}, this is Hailey. I'm going to give you a quick call here in a few - wanted to see if you had a chance to look into that energy program you inquired about?"
     
     # Try Twilio first (most reliable, same number as calls)
     result = send_twilio_sms(phone, message)
@@ -15802,16 +15854,23 @@ def send_warmup_sms(phone, first_name, contact_id=None):
     
     return result
 
-def send_followup_sms(phone, first_name, contact_id=None, attempt_number=1):
+def send_followup_sms(phone, first_name, contact_id=None, attempt_number=1, agent_type=''):
     """Send follow-up SMS after missed call - SAME NUMBER as calls for trust!
-    
+
     Priority: Twilio (direct) > Retell > GHL (fallback, different number)
     """
-    messages = [
-        f"Hey {first_name}, just tried reaching you. Is this still a good number to reach you at?",
-        f"Hi {first_name}, not sure if you got my call - still curious if that energy program is something you wanted to look into?",
-        f"{first_name}, tried you a few times. If the timing isn't right, no worries - just let me know either way?"
-    ]
+    if _sms_agent_type(phone, agent_type) == 'roofing':
+        messages = [
+            f"Hey {first_name}, it's Hailey with Bulldog Roofing, just tried you about your roof. Is this still a good number?",
+            f"Hi {first_name}, not sure if you got my call. Still want that free roof inspection? Takes about 15 minutes.",
+            f"{first_name}, tried you a few times about the free roof inspection. If the timing isn't right, no worries, just let me know either way?"
+        ]
+    else:
+        messages = [
+            f"Hey {first_name}, just tried reaching you. Is this still a good number to reach you at?",
+            f"Hi {first_name}, not sure if you got my call - still curious if that energy program is something you wanted to look into?",
+            f"{first_name}, tried you a few times. If the timing isn't right, no worries - just let me know either way?"
+        ]
     
     message = messages[min(attempt_number - 1, len(messages) - 1)]
     
@@ -19184,7 +19243,7 @@ Let's close some deals! 🚀"""
                     print(f"📱 Sending NEPQ intro text to {phone}...")
                     print(f"   Name: {first_name}, Address: {full_address}")
                     
-                    sms_result = send_lead_sms(phone, name=first_name, address=full_address, ghl_contact_id=contact_id)
+                    sms_result = send_lead_sms(phone, name=first_name, address=full_address, ghl_contact_id=contact_id, agent_type=agent_type)
                     
                     if sms_result.get('success'):
                         print(f"✅ Retell SMS sent! Chat ID: {sms_result.get('chat_id')}")
